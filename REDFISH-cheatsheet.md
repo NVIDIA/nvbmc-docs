@@ -1,11 +1,16 @@
 # Redfish cheat sheet
-This document is intended to provide a set of [Redfish][1] client commands for OpenBMC usage.
-(Using CURL commands)
+This document is intended to provide a set of example [Redfish][1] client
+commands for OpenBMC usage. This document uses cURL.
+This document assumes several ids, such as ManagerId, "bmc", and
+ComputerSystemId, "system". Assuming an id is not correct and any software
+written to use the Redfish API should not. From the  Redfish Specification,
+DSP0266, "Clients shall not make assumptions about the URIs for the members of a
+resource collection."
 
-## Query Root
+## Query Redfish Service Root
 ```
 export bmc=xx.xx.xx.xx
-curl -b cjar -k https://${bmc}/redfish/v1
+curl -k https://${bmc}/redfish/v1
 ```
 
 ---
@@ -42,6 +47,13 @@ curl -k -H "X-Auth-Token: $token" -X GET https://${bmc}/redfish/v1/Systems
 
 ---
 
+## View sessions
+```
+curl -k -H "X-Auth-Token: $token" https://${bmc}/redfish/v1/SessionService/Sessions
+```
+
+---
+
 ## Host power
 Host soft power off:
 ```
@@ -61,6 +73,21 @@ curl -k -H "X-Auth-Token: $token" -X POST https://${bmc}/redfish/v1/Systems/syst
 Reboot Host:
 ```
 curl -k -H "X-Auth-Token: $token" -X POST https://${bmc}/redfish/v1/Systems/system/Actions/ComputerSystem.Reset -d '{"ResetType": "GracefulRestart"}'
+```
+
+---
+
+## BMC reboot
+```
+curl -k -H "X-Auth-Token: $token" -X POST https://${bmc}/redfish/v1/Managers/bmc/Actions/Manager.Reset -d '{"ResetType": "GracefulRestart"}'
+```
+
+---
+
+## BMC factory reset
+Proceed with caution:
+```
+curl -k -H "X-Auth-Token: $token" -X POST https://${bmc}/redfish/v1/Managers/bmc/Actions/Manager.ResetToDefaults -d '{"ResetToDefaultsType": "ResetAll"}'
 ```
 
 ---
@@ -117,18 +144,43 @@ Change password to "0penBmc1":
 curl -k -H "X-Auth-Token: $token" -X PATCH -d '{"Password": "0penBmc1"}' https://${bmc}/redfish/v1/AccountService/Accounts/root
 ```
 
+---
+
 ## BIOS firmware boot control
-- Enter into BIOS setup on boot
-  ```
-  $ curl -k -H "X-Auth-Token: $token" -X PATCH https://${bmc}/redfish/v1/Systems/system -d '{"Boot":{"BootSourceOverrideEnabled": "Continuous","BootSourceOverrideTarget": "BiosSetup"}}'
-  ```
-- Fully boot
-  ```
-  $ curl -k -H "X-Auth-Token: $token" -X PATCH https://${bmc}/redfish/v1/Systems/system -d '{"Boot":{"BootSourceOverrideEnabled": "Disabled","BootSourceOverrideTarget": "None"}}'
-  ```
-- Change Legacy/EFI selector (valid only if host is based on the x86 CPU)
-  ```
-  $ curl -k -H "X-Auth-Token: $token" -X PATCH https://${bmc}/redfish/v1/Systems/system -d '{"Boot":{"BootSourceOverrideEnabled": "Once","BootSourceOverrideTarget": "None","BootSourceOverrideMode": "UEFI"}}'
-  ```
+Enter into BIOS setup on boot
+```
+curl -k -H "X-Auth-Token: $token" -X PATCH https://${bmc}/redfish/v1/Systems/system -d '{"Boot":{"BootSourceOverrideEnabled": "Continuous","BootSourceOverrideTarget": "BiosSetup"}}'
+```
+
+Fully boot
+```
+curl -k -H "X-Auth-Token: $token" -X PATCH https://${bmc}/redfish/v1/Systems/system -d '{"Boot":{"BootSourceOverrideEnabled": "Disabled","BootSourceOverrideTarget": "None"}}'
+```
+
+Change Legacy/EFI selector (valid only if host is based on the x86 CPU)
+```
+curl -k -H "X-Auth-Token: $token" -X PATCH https://${bmc}/redfish/v1/Systems/system -d '{"Boot":{"BootSourceOverrideEnabled": "Once","BootSourceOverrideTarget": "None","BootSourceOverrideMode": "UEFI"}}'
+```
+
+---
+
+## Enable NTP
+Add a NTP Server
+```
+curl -k -H "X-Auth-Token: $token" -X PATCH https://${bmc}/redfish/v1/Managers/bmc/NetworkProtocol -d '{"NTP":{"NTPServers":["time.nist.gov"]}}'
+```
+
+Now enable NTP
+```
+curl -k -H "X-Auth-Token: $token" -X PATCH https://${bmc}/redfish/v1/Managers/bmc/NetworkProtocol -d '{"NTP":{"ProtocolEnabled": true}}'
+```
+
+---
+
+## Disable IPMI
+```
+curl -k -H "X-Auth-Token: $token" -X PATCH https://${bmc}/redfish/v1/Managers/bmc/NetworkProtocol -d '{"IPMI":{"ProtocolEnabled": false}}'
+```
+
 
 [1]: https://www.dmtf.org/standards/redfish
