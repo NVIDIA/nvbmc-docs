@@ -11,7 +11,7 @@ Created: 2021-11-30
 
 ## Problem Description
 
-The current Open BMC solution misses secure storage for credentials and certificates.
+The current Open BMC solution misses secure storage for credentials and private keys.
 
 ### User scenarios
 1. When a service (or any other) user is logged into BMC environment, one cannot view/copy any accessible credential files.
