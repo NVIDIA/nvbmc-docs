@@ -14,7 +14,7 @@ Created: 2021-11-30
 The current Open BMC solution misses secure storage for credentials and private keys.
 
 ### User scenarios
-1. When a service (or any other) user is logged into BMC environment, one cannot view/copy any accessible credential files.
+1. When a service (or any other) user is logged into BMC environment, one cannot read any credential files directly.
 
 ## Background and References
 
@@ -69,13 +69,7 @@ This function is used twice: in `hostname_monitor.hpp` and `ssl_key_handler.hpp`
 
 #### Solution
 
-Encryption/decryption of the private key is implemented using the OpenSSL `PEM_write/read_PrivateKey` API which encrypts the key using a specified cipher (AES-256-CBC as agreed on Slack) and a passphrase fed to the cipher. The key is eventually written in PEM encrypted key format to the specified filename.
-
-Passphrase is the LSP, which will be provided by a separate module from Nvidia.
-
-#### Questions
-
-- LSP format is assumed to be a byte array passed to the PEM API as passphrase - confirm that's true?
+Encryption/decryption of the private key is implemented using the OpenSSL `PEM_write/read_PrivateKey` API which encrypts the key using a specified cipher (AES-256-CBC as agreed on Slack) with password-based encryption as PKCS#8 EncryptedPrivateKeyInfo to the specified filename. Passphrase is the LSP, which is understood to be a byte array and will be provided by a separate module from Nvidia.
 
 ### bmcweb certificate_service
 
@@ -85,24 +79,18 @@ Passphrase is the LSP, which will be provided by a separate module from Nvidia.
 - bmcweb does the IPC (D-Bus) to handle this request https://gitlab-collab-01.nvidia.com/viking-team/bmcweb/-/blob/develop-2.8/redfish-core/lib/certificate_service.hpp#L802
 - Finally the request goes to the backend D-bus repo which does the job https://gitlab-collab-01.nvidia.com/viking-team/phosphor-certificate-manager/-/tree/develop-2.8
 
-#### Questions
+Users are supposed to send private keys with certificates to redfish `ReplaceCertificate` API.
 
-- What do we have to specifically protect in this case, since no private keys are read or written?
+#### Solution
 
-### Other cases where keys are read/written found in code
-
-- phosphor-certificate-manager certs_manager.cpp:741 used in generateCSRHelper function
-- phosphor-certificate-manager certs_manager.cpp:552 used in generateCSRHelper function
-
-#### Questions
-
-- Should we also cover these?
-
+After sent key/cert data arrives in `phosphor-certificate-manager` and is eventually written to disk, saved files will be checked whether they contain any private keys and if there are, they will be encrypted after writing to disk using inotify watch in `bmcweb`. As in ssl_key_handler encryption/decryption of the private key is implemented analogously using the OpenSSL `PEM_write/read_PrivateKey` with AES-256-CBC cipher and LSP password-based encryption.
 
 ## Licensing
+
 In the initial phase we assume Apache v2 type of the license for all added files or made changes.
 
 ## Testing
-Unit tests are implemented in a separate implementation file `ssl_key_handler_test.cpp`. In order to fully facilitate tests for the added functionality function signatures, and places using them, will change:
+
+Unit tests are implemented in a separate implementation file `ssl_key_handler_test.cpp`. In order to fully facilitate tests for the added functionality function signatures and places using them will change, e.g.:
 - `void generateSslCertificate(const std::string& filepath, const std::string& cn, const unsigned char* pkeyPswd, const int pkeyPswdLen)`.
 - `bool verifyOpensslKeyCert(const std::string& filepath, pem_password_cb *pwdCb)`
