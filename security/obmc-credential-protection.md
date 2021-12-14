@@ -20,7 +20,8 @@ The current Open BMC solution misses secure storage for credentials and private 
 
 We will be supporting this in multiple stages.
 
-- **Stage 1:** We would only encrypt the private key for the certificate with some symmetric encryption algo.
+As per specification:
+- **Stage 1:** We would only encrypt the **private key** only for the certificate with symmetric encryption.
 - **Stage 2:** We would be looking to encrypt the whole partition(dm-crypt), so that we can add the secrets to this encrypted partition and we don’t need to do the encryption/decryption business at each application.
 
 Source code references:
@@ -86,17 +87,16 @@ Provided links:
 - Finally the request goes to the backend D-bus repo which does the job https://gitlab-collab-01.nvidia.com/viking-team/phosphor-certificate-manager/-/tree/develop-2.8
 
 Usecases:
-1. User sends either a signed certificate or a PEM-encoded private key with signed certificate to redfish-core `CertificateService.ReplaceCertificate` API. It is handled in `certificate_service.cpp:677 requestRoutesCertificateActionsReplaceCertificate`. This data is temporarily written to the device to a tmpfs directory `/tmp/Certs.XXXXXX` before being passed over DBus to HTTPS/LDAP/TrustStore certificate manager service, chosen based on certificate URI, using `xyz.openbmc_project.Certs.Replace` interface, method `Replace`.
+1. User sends either a signed certificate or a PEM-encoded private key with signed certificate to redfish-core `CertificateService.ReplaceCertificate` API. It is handled in `certificate_service.cpp:677 requestRoutesCertificateActionsReplaceCertificate`. This data is temporarily written to the device to a tmpfs directory `/tmp/Certs.XXXXXX` before being passed over DBus to HTTPS/LDAP/TrustStore certificate manager service, chosen based on certificate URI, using `xyz.openbmc_project.Certs.Replace` interface, method `Replace`. The actual service implementation is in `phosphor-certificate-manager`.
 
-Certificate manager service reference: https://github.com/openbmc/phosphor-dbus-interfaces/blob/a3d0c212a1e734a77fbaf11c7561c59e59d514da/xyz/openbmc_project/Certs/README.md . The actual service implementation is `phosphor-certificate-manager`. (TBD)
-
-2. User wants to generate a CSR using redfish-core `CertificateService.GenerateCSR` API, implemented in `certificate_service.cpp:236 requestRoutesCertificateActionGenerateCSR`, with all required fields passed as JSON in request body, which are passed to HTTPS/LDAP/TrustStore certificate manager service, based on URI, using `xyz.openbmc_project.Certs.CSR.Create` interface, method `GenerateCSR`.
-
-(TBD)
+2. User wants to generate a CSR using redfish-core `CertificateService.GenerateCSR` API, implemented in `certificate_service.cpp:236 requestRoutesCertificateActionGenerateCSR`, with all required fields passed as JSON in request body, which are passed to HTTPS/LDAP/TrustStore certificate manager service, based on URI, using `xyz.openbmc_project.Certs.CSR.Create` interface, method `GenerateCSR`. CSR is generated in `phosphor-certificate-manager` which implements the DBus service, along which a RSA or EC private key is generated and saved to a hardcoded file.
 
 #### Solution
 
-After sent key/cert data arrives and is eventually written to disk, saved files will be checked whether they contain any private keys and if there are, they will be encrypted after writing to disk using inotify watch in `bmcweb`. As in ssl_key_handler encryption/decryption of the private key is implemented analogously using the OpenSSL `PEM_write/read_PrivateKey` with AES-256-CBC cipher and LSP password-based encryption.
+After sent key/cert data arrives and is eventually written to disk, saved files will be checked whether they contain any private keys and if there are, they will be encrypted after writing to disk using inotify_watch in `bmcweb`. As in ssl_key_handler encryption/decryption of the private key is implemented analogously using the OpenSSL `PEM_write/read_PrivateKey` with AES-256-CBC cipher and LSP password-based encryption.
+
+Questions:
+- **Can we encrypt keys directly in `phosphor-certificate-manager`?**
 
 ## Licensing
 
