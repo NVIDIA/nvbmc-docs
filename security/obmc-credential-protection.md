@@ -93,10 +93,7 @@ Usecases:
 
 #### Solution
 
-After sent key/cert data arrives and is eventually written to disk, saved files will be checked whether they contain any private keys and if there are, they will be encrypted after writing to disk using inotify_watch in `bmcweb`. As in ssl_key_handler encryption/decryption of the private key is implemented analogously using the OpenSSL `PEM_write/read_PrivateKey` with AES-256-CBC cipher and LSP password-based encryption.
-
-Questions:
-- **Can we encrypt keys directly in `phosphor-certificate-manager`?**
+As in ssl_key_handler encryption/decryption of the private key is implemented analogously using the OpenSSL `PEM_write/read_PrivateKey` with AES-256-CBC cipher and LSP password-based encryption in `phosphor-certificate-manager`.
 
 ## Licensing
 
