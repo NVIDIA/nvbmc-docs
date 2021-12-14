@@ -11,15 +11,16 @@ Created: 2021-11-30
 
 ## Problem Description
 
-SPDM is a significant securtiy extension for Open BMC as it does not provide SPDM implementation.
-It will be usefull for ROT hardware which tries to get the attestation data
+SPDM is a significant security extension for Open BMC as it does not provide SPDM implementation.
+It will be useful for ROT hardware which tries to get the attestation data
 from all the devices to authenticate the firmware on the connected devices.
 
 ### User scenarios
-1. BMC authenticates all the SPDM supported devices.
-Basic on the authentication results BMC may decide to use a device or shut it down.
-Also, BMC may decide to shut down devices, which do not support SPDM.
+1. Redfish client asks the BMC to get the attestation data from any of the SPDM supported devices. Redfish Client will consume this data and act upon on this data.
 2. BMC gets measurements data from the SPDM supported devices.
+3. Basing on the authentication results BMC may decide to use a device or shut it down.
+Also, BMC may decide to shut down devices, which do not support SPDM.
+However this is out of the scope of the SPDM specification.
 
 ## Background and References
 
@@ -34,38 +35,51 @@ confidentiality and integrity protected data communication. The SPDM enables eff
 to low-level security capabilities and operations.
 Other mechanisms, including non-PMCI- and DMTF- defined mechanisms, can use the SPDM.*
 
-## Requirements
-
 The currently available open spdm reference design is not ready to be used in
 the current Open BMC solution. Additionally, its license requirements are
 limiting open and free usage of the design.
 
 [[2] libspdm - a sample implementation that follows the DMTF SPDM specification](https://github.com/DMTF/libspdm)
 
+## Requirements
+
 SPDM requires to be implemented up to version 1.1.
 Version 1.0 requires implementation of certificates verification.
 Version 1.1 introduces secure communication.
+
+The below requirements are defined as phase 1 and are mandatory to support Redfish SPDM schema.
+
 In this project the SPDM communication must be implemented over MCTP.
 Getting measurements is mandatory and must be supported.
-Mutual authentication should be supported.
+Mutual authentication is optional.
 Communication over the PCI DOE is optional.
-Sessions are alo optional to be supported in this implementation.
+Sessions are also optional to be supported in this implementation.
 Responder functionality in SPDM deamon is not required in this project.
 The implementation cannot use the mentioned open SPDM github project, but may use a similar approach.
+
+Supported SPDM messages:
+- GET_CAPABILITIES / CAPABILITIES,
+- NEGOTIATE_ALGORITHMS / ALGORITHMS,
+- GET_DIGEST / DIGEST,
+- GET_CERTIFICATE / CERTIFICATE,
+- CHALLENGE / CHALLENGE_AUTH,
+- GET_MEASUREMENTS / MEASUREMENTS
+
+Supported requester capabilities:
+- CERT_CAP
+- CHAL_CAP
+- MEAS_CAP
+- MEAS_FRESH_CAP
 
 ## Proposed Design
 
 ### Overview
 SPDM module will consists of three parts:
-- SPDM library - prepared as a separate library to support SPDM deamon,
-unitary tests and any external responder or requester implementation
+- SPDM library - prepared as a separate library to support SPDM deamon, unitary tests and any external responder or requester implementation
 - SPDM deamon - main deamon to manage SPDM queries
 - SPDM unitary tests - unitary tests for SPDM library implementation
 
-The solution could be preapred as a single SPDM deamon with dbus interface and
-without a dedicated library. However, layering the design into deamon and library
-may be usefull to reuse the source code for other responders. Also, it should make
-unitary tests more robust.
+The solution could be prepared as a single SPDM deamon with dbus interface and without a dedicated library. However, layering the design into separate deamon and library may be useful to reuse the source code for other responders. Also, it should make unitary tests more robust.
 
 ### Dependencies
 - SPDM library requires MCTP control module
@@ -84,7 +98,7 @@ and use std::mutex and std::lock_guard if required.
 
 ### SPDM library - *libspdmcpp*
 The library should provide the following external API
-- Serialization and deserialization of SPDM messages.
+- Serialization and deserialization of the required SPDM messages.
 - Sending and receiving messages over MCTP with SPDM payload in secured and non-secured versions.
 - Any security or certificates management required by SPDM requester or responder.
 
@@ -104,6 +118,9 @@ Supported communication layers:
 Secure communication:
 - [DSP0277 Secured Messages using SPDM Specification](https://www.dmtf.org/sites/default/files/standards/documents/DSP0277_1.0.0.pdf)
 
+#### MCTP connection
+The library provides means to discover all MCTP devices. This is done using dbus discovery mechanism
+implemented in ctrld in libmctp. And the library provides API to send messages over MCTP.
 
 ### SPDM deamon - *spdmcppd*
 SPDM deamon could work as a single threaded process and could be implemented using a similar
@@ -124,7 +141,8 @@ It will not be necessary to add dbus to libspdmcpp. This is because dbus is spec
 for deamon and it is not a part of the official SPDM specification.
 
 We assume that spdm deamon will be configured using a dedicated configuration file.
-Additionally, it will support run-time parameters.
+Additionally, it will support run-time parameters. This approach should provide better means for development, testing and verification.
+However, it should be also possible to set default spdmd values using yocto meta-layers, so configuration file usage could be omitted.
 
 Note that the below specification may be adjusted during the implementation phase.
 
@@ -137,7 +155,7 @@ Provides params syntax, also for a configuration file
 Sets debug level:
 0-critical errors and expected output,
 1-all errors and authentication results,
-2-warnigns,
+2-warnings,
 3-debug,
 4-trace
 - **--conf** ""
@@ -177,7 +195,7 @@ Debug levels - the same as for verbose parameter.
 - **mutual_authentication**: [true|false];
 Enables or disables mutual authentication feature - by default true, if implemented.
 - **sessions_support**: [true|false];
-Enables support for seesions - by default true, if implemented.
+Enables support for sessions - by default true, if implemented.
 - **cached_authorization**: [true|false]
 [Id device 1],
 [Id device 2];
@@ -187,18 +205,37 @@ should be performed without an initiating dbus command.
 The initial authorization should be performed after running the deamon with a delay configured by this param.
 Default value: 60.
 - **cached_authorization_renew**: [seconds];
-Renew autorization for already authenticated devices after the provided time period.
+Renew authorization for already authenticated devices after the provided time period.
 Value of 0 seconds makes no renew available.
 Default value: 0.
 
+#### SPDM over MCTP conneciton
+The SPDM deamon uses MCTP discovery mechanism to check available MCTP devices.
+The MCTP discovery mechanism is provided by ctrld, implemented in mctp library.
+
+    [SPDM deamon] <--> [SPDM library] <--> [libmctp: ctrld (over dbus)]
+
+Once all MCTP capable devices are discovered SPDM deamon will send GET_CAPABILITIES message to all devices to check, which devices support SPDM.
+
+SPDM messages will be sent using MCTP library. The messages are sent using sockets.
+
+    [SPDM deamon] <--> [SPDM library] <--> [libmctp: socket]
+
+After that part, spdmd should have a list of SPDM responders. Any authentication could be initiated in two ways:
+1. Redfish client requests for authentication, certificates or measurements from an SPDM responder capable device.
+2. The SPDM deamon initiates authentication after initial delay, getting certificates or measurements basing on provided parameters or the configuration file. After that the deamon stores cached values, available for immediate answering on Redfish client queries.
+
+All cached values like authorization status, certificates and measurements are kept in the SPDM deamon.
+
 #### Dbus communication layer
-Dbus communication layer should provide a dedicated means to get all information required
-by Redfish schema, specific for SPDM.
+Dbus communication layer should provide dedicated means to get all information required by Redfish schema, specific for SPDM.
+
+    [Redfish client] <--> [BMC dbus client] <--> [SPDM deamon] <--> [SPDM responder device]
 
 SPDM deamon will use dbus API provided by [sdbusplus repo](https://github.com/openbmc/sdbusplus.git).
 
 Dbus requests params
-Id - could be a mashup of the eRoT’s id plus protected entity’s Id (Ex: GPU’s Id)
+Id - could be a mash-up of the eRoT’s id plus protected entity’s Id (Ex: GPU’s Id)
 "Id" : "<ComponentIntegrity’s Id>"
 for example: "Chassis/{ChassisId}" or "ComputerSystems/{SystemId}/Processors/{ProcessorId}"
 
@@ -210,7 +247,13 @@ Request type:
 5. (optional) get session Id
 ComponentCommunication is optional for now as we don’t need to encrypt the SPDM channel between HMC and eRoT. However, SessionId property can be useful once we have a way of letting the Redfish client ask HMC to re-negotiate SPDM version and/or algorithm with the eRoT. It can indicate if the session changed after a re-negotiation.
 
-Below, an exact description of dbus communication commands will be provided.
+Once the initial implementation is prepared, an exact description of dbus communication commands will be provided in this document.
+
+##### Error handling
+Any error occurred during communication or due to timeout will cause failure in authorization verification.
+
+##### Getting authorization, certificates or measurement delay handling
+Using caching approach for getting authorizations, certificates or measurement should significantly decrease required timing to answer Redfish client queries.
 
 ## Licensing
 In the initial phase we assume [Apache v2](https://www.apache.org/licenses/LICENSE-2.0) type of the license for the repository and all sources.
