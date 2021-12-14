@@ -102,8 +102,19 @@ Questions:
 
 In the initial phase we assume Apache v2 type of the license for all added files or made changes.
 
-## Testing
+## Automated testing
 
 Unit tests are implemented in a separate implementation file `ssl_key_handler_test.cpp`. In order to fully facilitate tests for the added functionality function signatures and places using them will change, e.g.:
 - `void generateSslCertificate(const std::string& filepath, const std::string& cn, const unsigned char* pkeyPswd, const int pkeyPswdLen)`.
 - `bool verifyOpensslKeyCert(const std::string& filepath, pem_password_cb *pwdCb)`
+
+## Manual test cases
+
+1. remove the certificate manually and restart the bmcweb, bmcweb comes up good (no error posted in the journal).
+2. try to access the bmcweb and try to authenticate.
+3. try to get the certificate of bmcweb through openssl s_client
+4. from shell try to read the certificate, it should be encrypted one.
+5. Try to replace the certificate through bmcweb, check the journal logs.
+6. perform the test case 4 again.
+7. persistency test, restart the BMC and again perform test case 3 and 4.
+8. Firmware update test case needs to be thought through, I have given the use case below
