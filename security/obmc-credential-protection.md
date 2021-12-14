@@ -70,12 +70,11 @@ User starts bmcweb on device, bmcweb checks whether a TLS certificate is availab
 - Key/certificate are validated in `ssl_key_handler.hpp:99 verifyOpensslKeyCert(...)`.
 - Key/certificate is recreated with new subject CN in `hostname_monitor.hpp:115 onPropertyUpdate(...)` using `generateSslCertificate`
 
-Questions:
-- What does the `hostname_monitor` do?
-
 #### Solution
 
-Encryption/decryption of the private key is implemented using the OpenSSL `PEM_write/read_PrivateKey` API which encrypts the key using a specified cipher (AES-256-CBC as agreed on Slack) with password-based encryption as PKCS#8 EncryptedPrivateKeyInfo to the specified filename. Passphrase is the LSP, which is understood to be a byte array and will be provided by a separate module from Nvidia.
+Encryption/decryption of the private key is implemented using the OpenSSL `PEM_write/read_PrivateKey` API which encrypts the key using a specified cipher (AES-256-CBC as agreed on Slack) with password-based encryption as PKCS#8 EncryptedPrivateKeyInfo to the specified filename. Passphrase is the LSP, which is understood to be a byte array and will be provided by a separate module from Nvidia. 
+
+On key validation in `verifyOpensslKeyCert(...)`, there is going to be a check performed whether the saved file contains an encrypted or non-encrypted key and if the file contains a valid unencrypted key, it will be overwritten in EncryptedPrivateKeyInfo form analogously to the key generated above. That way firmware update case will be facilitated.
 
 ### bmcweb certificate_service.cpp
 
@@ -93,7 +92,7 @@ Usecases:
 
 #### Solution
 
-As in ssl_key_handler encryption/decryption of the private key is implemented analogously using the OpenSSL `PEM_write/read_PrivateKey` with AES-256-CBC cipher and LSP password-based encryption in `phosphor-certificate-manager`.
+As in ssl_key_handler encryption/decryption of the private key is implemented analogously using the OpenSSL `PEM_write/read_PrivateKey` with AES-256-CBC cipher and LSP password-based encryption in `phosphor-certificate-manager`. Firmware update case will also be facilitated in the same way - by checking whether the existing key is unencrypted and replacing it with encrypted version if this is the case.
 
 ## Licensing
 
