@@ -72,9 +72,12 @@ User starts bmcweb on device, bmcweb checks whether a TLS certificate is availab
 
 #### Solution
 
-Encryption/decryption of the private key is implemented using the OpenSSL `PEM_write/read_PrivateKey` API which encrypts the key using a specified cipher (AES-256-CBC as agreed on Slack) with password-based encryption as PKCS#8 EncryptedPrivateKeyInfo to the specified filename. Passphrase is the LSP, which is understood to be a byte array and will be provided by a separate module from Nvidia. 
+First the private key/certificate file check in `verifyOpensslKeyCert(...)` is updated to account for firmware update case:
+- If it doesn't exist, both are generated, as it is implemented right now
+- If it exists but isn't encrypted, verified by checking the ASN.1 structure of the key for existence of PBES2/PBKDF2 object, the private key is encrypted and written to the same file
+- If it exists and is encrypted, no actions are performed
 
-On key validation in `verifyOpensslKeyCert(...)`, there is going to be a check performed whether the saved file contains an encrypted or non-encrypted key and if the file contains a valid unencrypted key, it will be overwritten in EncryptedPrivateKeyInfo form analogously to the key generated above. That way firmware update case will be facilitated.
+Encryption/decryption of the private key is implemented using the OpenSSL `PEM_write/read_PrivateKey` API which encrypts the key using a specified cipher (AES-256-CBC as agreed) with password-based encryption as PKCS#8 EncryptedPrivateKeyInfo to the specified filename. Passphrase is the LSP, which is understood to be a byte array and will be provided by a separate module from Nvidia. 
 
 ### bmcweb certificate_service.cpp
 
@@ -92,7 +95,7 @@ Usecases:
 
 #### Solution
 
-As in ssl_key_handler encryption/decryption of the private key is implemented analogously using the OpenSSL `PEM_write/read_PrivateKey` with AES-256-CBC cipher and LSP password-based encryption in `phosphor-certificate-manager`. Firmware update case will also be facilitated in the same way - by checking whether the existing key is unencrypted and replacing it with encrypted version if this is the case.
+Observing for writes to certificate/private key files for each certificate service path is implemented using `inotify_watch` in `bmcweb`. As in `ssl_key_handler.hpp` encryption/decryption of the private key is implemented analogously using the OpenSSL `PEM_write/read_PrivateKey` with AES-256-CBC cipher and LSP password-based encryption in `phosphor-certificate-manager`. Firmware update case will also be facilitated in the same way - by checking whether the existing key is unencrypted and replacing it with encrypted version if this is the case.
 
 ## Licensing
 
