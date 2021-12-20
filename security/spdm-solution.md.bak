@@ -6,7 +6,6 @@ Marcin Nowakowski <marcin.nowakowski@conclusive.pl>
 Primary assignee:
 
 Other contributors:
-Ratan Gupta <guptar@nvidia.com>
 
 Created: 2021-11-30
 
@@ -38,51 +37,58 @@ Existing Reference implementation for SPDM:
  libspdm - a sample implementation that follows the DMTF SPDM specification](https://github.com/DMTF/libspdm)
 
 ### Glossary
-* **RTT** - This is the worst case round trip transport timing.
-* **ST1** - This shall be the maximum amount of time the Responder has to provide a response to
+* RTT - This is the worst case round trip transport timing.
+* ST1 - This shall be the maximum amount of time the Responder has to provide a response to
    requests that do not require cryptographic processing, such as GET_CAPABILITIES,
    GET_VERSION or NEGOTIATE_ALGORITHMS
    Value should be 100ms.
-* **T1** - This shall be the minimum amount of time the Requester shall wait before issuing a
+* T1 - This shall be the minimum amount of time the Requester shall wait before issuing a
    retry for requests that do not require cryptographic processing.
    Value should be RTT + ST1.
-* **CT** - This is the cryptographic timeout in microseconds. CTExponent is reported in the CAPABILITIES message
+* CT - This is the cryptographic timeout in microseconds. CTExponent is reported in the CAPABILITIES message
    Value should be 2^CTExponent
-* **T2** - This shall be the minimum amount of time the Requester shall wait before issuing a retry for requests that require cryptographic processing.
-* **Requester** - Original transmitter, or source, of an SPDM request message.
+* T2 - This shall be the minimum amount of time the Requester shall wait before issuing a retry for requests that require cryptographic processing.
+* Requester - Original transmitter, or source, of an SPDM request message.
    It is also the ultimate receiver, or destination, of an SPDM response message.
-* **Responder** - Ultimate receiver, or destination, of an SPDM request message.
+* Responder - Ultimate receiver, or destination, of an SPDM request message.
    It is also the original transmitter, or source of an SPDM response message.
 
 ## Requirements
 
-1. SPDM solution supports the following versions
+1. SPDM supports the following version
 	- Version 1.0 : Device Authentication and Measurement.
 	- Version 1.1 : Device session key establishment and introduces secure communication.
 
-2. BMC will act as an SPDM Requester, hence need to follow the requirements captured from the SPDM spec(DSP0274).
+2. BMC will act as an SPDM Requester, hence need to follow the requirements captured from the
+   SPDM spec(DSP0274).
 
-	- Concurrent SPDM message processing (SPDM Requestor)
-    	- A Requester shall not have multiple outstanding requests to the same Responder, with the exception of GET_VERSION addressed in GET_VERSION request message and VERSION response message.
-    	- If the Requester has sent a request to a Responder and wants to send a subsequent request to the same Responder, then the Requester shall wait to send the subsequent request until after the Requester completes one of the following actions:
-     		• Receives the response from the Responder for the outstanding request.
-     		• Times out waiting for a response.
-     		• Receives an indication, from the transport layer, that transmission of the request message failed.
-    	- A Requester may send simultaneous request messages to different Responders
+    a. Concurrent SPDM message processing (SPDM Requestor)
 
-	- Timing requirements (SPDM Requester)
-    	- If the Requester does not receive a response within T1 or T2 time accordingly, the Requester may retry a request message.
-    	- Retry of a request message shall be a complete retransmission of the original SPDM request message.
+    - A Requester shall not have multiple outstanding requests to the same Responder,
+     with the exception of GET_VERSION addressed in GET_VERSION request message and VERSION response message.
+    - If the Requester has sent a request to a Responder and wants to send a subsequent
+      request to the same Responder, then the Requester shall wait to send the subsequent
+      request until after the Requester completes one of the following actions:
+     • Receives the response from the Responder for the outstanding request.
+     • Times out waiting for a response.
+     • Receives an indication, from the transport layer, that transmission of the request message failed.
+    - A Requester may send simultaneous request messages to different Responders
+
+    b. Timing requirements(SPDM Requestor)
+
+    - If the Requester does not receive a response within T1 or T2 time accordingly,
+      the Requester may retry a request message.
+    - Retry of a request message shall be a complete retransmission of the original SPDM request message.
 
 3. Fresh measurement will be taken on first boot or every boot of the BMC.
 
 4. BMC would be SPDM v1.1 compliant and the following messages needs to be implemented.
-   - GET_CAPABILITIES / CAPABILITIES,
-   - NEGOTIATE_ALGORITHMS / ALGORITHMS,
-   - GET_DIGEST / DIGEST,
-   - GET_CERTIFICATE / CERTIFICATE,
-   - CHALLENGE / CHALLENGE_AUTH,
-   - GET_MEASUREMENTS / MEASUREMENTS
+    - GET_CAPABILITIES / CAPABILITIES,
+    - NEGOTIATE_ALGORITHMS / ALGORITHMS,
+    - GET_DIGEST / DIGEST,
+    - GET_CERTIFICATE / CERTIFICATE,
+    - CHALLENGE / CHALLENGE_AUTH,
+    - GET_MEASUREMENTS / MEASUREMENTS
 
 5. Supported requester capabilities:
    - CERT_CAP
@@ -139,11 +145,11 @@ Existing Reference implementation for SPDM:
            +                          +                         +                        +                         +
 
 
-- The SPDM deamon uses MCTP discovery mechanism to check available MCTP devices, supporting MCTP message type = 5.
+- The SPDM deamon uses MCTP discovery mechanism to check available MCTP devices. supporting MCTP message type = 5.
 - The MCTP discovery mechanism is provided by ctrld, implemented in mctp library.
 - SPDM daemon creates the D-bus object for all the connected SPDM endpoints.
 - SPDM daemon initiate the handshake and get the measurement data from the connected devices and update the D-Bus objects.
-- Once all MCTP capable devices are discovered, SPDM deamon will do the handshake with all the discovered.
+- Once all MCTP capable devices are discovered, SPDM deamon will do the handshake with all the discovered
 
 
 #### Redfish Client Invoking the signMeasurementFunction
@@ -271,7 +277,7 @@ The library should provide the following external API
 - Any security or certificates management required by SPDM requester or responder.
 
 Security algorithms support: SHA-2, RSA-SSA/ECDSA, FFDHE/ECDHE, AES_GCM/ChaCha20Poly1305, HMAC
-The library internally uses as security library: [Mbed TLS](https://tls.mbed.org/kb/development/hw_acc_guidelines)
+This library internally uses Security library: [Mbed TLS](https://tls.mbed.org/kb/development/hw_acc_guidelines)
 Open SSL could be used also, but we need only one crypto library. Mbed TLS seems to be a better choice.
 
 ##### Supported communication layers:
@@ -381,9 +387,16 @@ Default value: 0.
 #### SPDM over MCTP conneciton
 The SPDM deamon uses MCTP discovery mechanism to check available MCTP devices.
 The MCTP discovery mechanism is provided by ctrld, implemented in mctp library.
+
+    [SPDM deamon] <--> [SPDM library] <--> [libmctp: ctrld (over dbus)]
+
+GET_MESSSAGES_TYPE - support for MCTP endpoints with SPDM.
+
 Once all MCTP capable devices are discovered SPDM deamon will send GET_CAPABILITIES message to all devices to check, which devices support SPDM.
 
 SPDM messages will be sent using MCTP library. The messages are sent using sockets.
+
+    [SPDM deamon] <--> [SPDM library] <--> [libmctp: socket]
 
 After that part, spdmd should have a list of SPDM responders. Any authentication could be initiated in two ways:
 1. Redfish client requests for authentication, certificates or measurements from an SPDM responder capable device.
@@ -393,6 +406,8 @@ All cached values like authorization status, certificates and measurements are k
 
 #### Dbus communication layer
 Dbus communication layer should provide dedicated means to get all information required by Redfish schema, specific for SPDM.
+
+    [Redfish client] <--> [BMC dbus client] <--> [SPDM deamon] <--> [SPDM responder device]
 
 SPDM deamon will use dbus API provided by [sdbusplus repo](https://github.com/openbmc/sdbusplus.git).
 
@@ -410,6 +425,7 @@ Request type:
 ComponentCommunication is optional for now as we don’t need to encrypt the SPDM channel between HMC and eRoT. However, SessionId property can be useful once we have a way of letting the Redfish client ask HMC to re-negotiate SPDM version and/or algorithm with the eRoT. It can indicate if the session changed after a re-negotiation.
 
 Dbus objects should not be persistent.
+Dbus queries should finish within 10 seconds.
 The maximum number of supported MCTP/SPDM endpoints will be 255.
 
 Once the initial implementation is prepared, an exact description of dbus communication commands will be provided in this document.
