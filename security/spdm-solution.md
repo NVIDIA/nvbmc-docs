@@ -19,12 +19,14 @@ In a typical system where there are multiple subsystems, each subsystem can prov
 
 SPDM’s vision is to resolve the long-lasting problem of compatible secure communication solution between two endpoints of embedded systems
 
-Usecases:
-- SPDM solution delivers authentication for SPDM supporting modules
-- Support for Redfish SPDM schema queries
-- Secure Firmware Update
-
-(Needs to be describe more)
+Usecase:
+- The authentication initiator can request from the component/subsystems a set of measurements of its firmware.
+- These measurements can be compared to a database of validated measurements to assess whether or not the
+  correct firmware is installed.
+- If a measurement is determined to be incorrect, this indicates that an update is required,
+  that malware has been introduced.
+- If the authentication intiator sitting outside the BMC, Can get this measurements through
+  Redfish protocol(out of band management).
 
 ## Background and References
 
