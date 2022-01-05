@@ -211,39 +211,32 @@ Existing Reference implementation for SPDM:
 - EID
 - UUID
 
+The above Dbus object will not be persistent(i.e) fresh measurement will be
+taken after BMC reboot or service restart.
+
 NOTE: D-Bus Client may have requirement to:
 - Have the URL of the actual EROT.
 - Have the URL of the component protected by EROT.
 
-It can be handled in two ways.
 
-1/ Add association interface by the SPDM daemon during creation of the
-   SPDM Responder D-Bus object and add those inventry objects.
-
-2/ If we don't have association interface on the D-bus object then
-   D-Bus client need to fetch the inventory URL by following
-
-Assumption: UUID will be same for the components protected inventory path and the EROT.
-
-#### Map the UUID to the inventory path of the EROT
+#### How to get the inventory path of the EROT
 
 - Pldm creates the inventory of the EROT
 - During creation of the inventory object Pldm implements the UUID interface
-   as well as the SPDM.Responder interface(Yet to be defined)
+   as well as the Item.ComponentIntegrity interface(Yet to be defined)
 - D-Bus client will query for all the inventory objects under pldm namespace implementing
-  the SPDM.Responder interface.
-- For each object which implements the Responder interface, gets the UUID
+  the Item.ComponentIntegrity interface.
+- For each object which implements the ComponentIntegrity interface, gets the UUID
   from that object and match with the SPDM measurement D-bus object UUID.
 
-#### Map the UUID to the inventory path of the components protected by the EROT
+#### How to get the inventory path of the components protected by the EROT
 
-- Application which creates the inventory object, Needs to implement the UUID
-    interface(Proposal)
-- D-Bus client will query for all the inventory objects implementing the UUID interface
-- For each object get the UUID and match with the sign measurement D-bus object
-  UUID.
-
-Option 1 looks good, Less performance overhead on the D-bus client.
+- Application which creates the EROT inventory object, will implement the component-
+  integrity interface and its associations.
+- D-Bus client will query for all the inventory objects implementing the component-inte
+  grity interface.
+- Get the associated objects from the objects implementing the component-inte
+  grity interface.
 
 ### Structure of the SPDM Module
 
