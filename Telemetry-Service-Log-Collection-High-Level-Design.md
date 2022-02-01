@@ -1,4 +1,4 @@
-    # System Log collection
+# System Log collection
 Author: Sudhakar Kuppusamy
 
 Primary assignee: Sudhakar Kuppusamy
