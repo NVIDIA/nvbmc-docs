@@ -19,14 +19,14 @@ In a typical system where there are multiple subsystems, each subsystem can prov
 
 SPDM’s vision is to resolve the long-lasting problem of compatible secure communication solution between two endpoints of embedded systems
 
-Usecase:
+Use-case:
 - The authentication initiator can request from the component/subsystems a set of measurements of its firmware.
 - These measurements can be compared to a database of validated measurements to assess whether or not the
   correct firmware is installed.
 - If a measurement is determined to be incorrect, this indicates that an update is required,
   that malware has been introduced.
-- If the authentication intiator sitting outside the BMC, Can get this measurements through
-  Redfish protocol(out of band management).
+- If the authentication initiator sitting outside the BMC, can get this measurements through
+  Redfish protocol (out of band management).
 
 ## Background and References
 
@@ -76,9 +76,9 @@ Existing Reference implementation for SPDM:
     	- If the Requester does not receive a response within T1 or T2 time accordingly, the Requester may retry a request message.
     	- Retry of a request message shall be a complete retransmission of the original SPDM request message.
 
-3. Fresh measurement will be taken on first boot or every boot of the BMC.
+3. Fresh measurement will be taken on first boot or every boot of the BMC. This feature can be turned off in the configuration.
 
-4. BMC would be SPDM v1.1 compliant and the following messages needs to be implemented.
+4. The BMC will be SPDM v1.1 compliant and the following messages need to be implemented.
    - GET_CAPABILITIES / CAPABILITIES,
    - NEGOTIATE_ALGORITHMS / ALGORITHMS,
    - GET_DIGEST / DIGEST,
@@ -91,6 +91,8 @@ Existing Reference implementation for SPDM:
    - CHAL_CAP
    - MEAS_CAP
    - MEAS_FRESH_CAP
+
+6. The BMC will not perform attestation by itself but will collect measurements on behalf of the Redfish client.
 
 ## Proposed Design
 
@@ -141,11 +143,11 @@ Existing Reference implementation for SPDM:
            +                          +                         +                        +                         +
 
 
-- The SPDM deamon uses MCTP discovery mechanism to check available MCTP devices, supporting MCTP message type = 5.
+- The SPDM daemon uses MCTP discovery mechanism to check available MCTP devices, supporting MCTP message type = 5.
 - The MCTP discovery mechanism is provided by ctrld, implemented in mctp library.
 - SPDM daemon creates the D-bus object for all the connected SPDM endpoints.
-- SPDM daemon initiate the handshake and get the measurement data from the connected devices and update the D-Bus objects.
-- Once all MCTP capable devices are discovered, SPDM deamon will do the handshake with all the discovered.
+- SPDM daemon initiate the handshake and get the measurement data from the connected devices and updates the D-Bus objects.
+- Once all MCTP capable devices are discovered, SPDM daemon will do the handshake with all of them.
 
 
 #### Redfish Client Invoking the signMeasurementFunction
@@ -201,28 +203,27 @@ Existing Reference implementation for SPDM:
 - SPDM daemon will start the SPDM message exchange.
 - Get the measurements and update the corresponding D-Bus object.
 
-### Dbus parameters expected from the D-Bus Object:
+### D-Bus parameters expected from the D-Bus Object:
 
 - Array of Measurements
 - Certificate
 - SPDM Version
 - HashingAlgorithm
 - SigningAlgorithm
-- EID
-- UUID
+- Status of connection between SPDM requester and a responder
+- Associations interface to MCTP endpoint, capable of SPDM responder functionality 
 
-The above Dbus object will not be persistent(i.e) fresh measurement will be
-taken after BMC reboot or service restart.
+The above D-Bus object will not be persistent (i.e) fresh measurement could be taken after BMC reboot or service restart.
 
-NOTE: D-Bus Client may have requirement to:
-- Have the URL of the actual EROT.
-- Have the URL of the component protected by EROT.
-
+Additionally, the D-Bus object will have a method to get fresh measurements, with the following parameters:
+- SlotId
+- Nonce
+- Measurements index
 
 #### How to get the inventory path of the EROT
 
 - Pldm creates the inventory of the EROT
-- During creation of the inventory object Pldm implements the UUID interface
+- During creation of the inventory object pldm implements the UUID interface
    as well as the Item.ComponentIntegrity interface(Yet to be defined)
 - D-Bus client will query for all the inventory objects under pldm namespace implementing
   the Item.ComponentIntegrity interface.
@@ -233,31 +234,29 @@ NOTE: D-Bus Client may have requirement to:
 
 - Application which creates the EROT inventory object, will implement the component-
   integrity interface and its associations.
-- D-Bus client will query for all the inventory objects implementing the component-inte
-  grity interface.
-- Get the associated objects from the objects implementing the component-inte
-  grity interface.
+- D-Bus client will query for all the inventory objects implementing the component-integrity interface.
+- Get the associated objects from the objects implementing the component-integrity interface.
 
 ### Structure of the SPDM Module
 
 SPDM module will consists of three parts:
-- SPDM library - prepared as a separate library to support SPDM deamon, unitary tests and any external responder or requester implementation
-- SPDM deamon - main deamon to manage SPDM queries
+- SPDM library - prepared as a separate library to support SPDM daemon, unitary tests and any external responder or requester implementation
+- SPDM daemon - main daemon to manage SPDM queries
 - SPDM unitary tests - unitary tests for SPDM library implementation
 
-The solution could be prepared as a single SPDM deamon with dbus interface and without a dedicated library. However, layering the design into separate deamon and library may be useful to reuse the source code for other responders. Also, it should make unitary tests more robust.
+The solution could be prepared as a single SPDM daemon with D-Bus interface and without a dedicated library. However, layering the design into separate daemon and library may be useful to reuse the source code for other responders. Also, it should make unitary tests more robust.
 
 ### Dependencies
 - SPDM library requires MCTP control module
 - SPDM library requires also security libraries
-- SPDM deamon requires accessing dbus
+- SPDM daemon requires accessing D-Bus
 
 ### Implementation assumptions
 - Build system: meson
 - Language for all source code files: `C++` (`C++` is chosen to distinguish implementation from open spdm reference project and also to speed up development, especially using standard classes)
 - SPDM solution is meant to work in Linux environment, and it will not support Windows environment.
 - We will not use shared (or global) variables. The whole implementation should be "thread safe" and use std::mutex and std::lock_guard if required.
-- The deamon should work in Linux user space - we do not predict kernel modules in the implementation.
+- The daemon should work in Linux user space - we do not predict kernel modules in the implementation.
 
 ### SPDM library - *libspdmcpp*
 The library should provide the following external API
@@ -282,36 +281,32 @@ Open SSL could be used also, but we need only one crypto library. Mbed TLS seems
 Secure communication:
 - [DSP0277 Secured Messages using SPDM Specification](https://www.dmtf.org/sites/default/files/standards/documents/DSP0277_1.0.0.pdf)
 
-#### MCTP connection
-The library provides means to discover all MCTP devices. This is done using dbus discovery mechanism
-implemented in ctrld in libmctp. And the library provides API to send messages over MCTP.
-
-### SPDM deamon - *spdmcppd*
-SPDM deamon could work as a single threaded process and could be implemented using a similar approach as it is done for example for pldmd (but without any references to this implementation).
+### SPDM daemon - *spdmd*
+SPDM daemon could work as a single threaded process and could be implemented using a similar approach as it is done for example for pldmd (but without any references to this implementation).
 
 The main thread functionality is to perform requester tasks.
-After realizing requester discovery the deamon will provide information about confirmed certified modules through dbus (measurement data of each connected endpoint which supports SPDM).
+After realizing requester discovery the daemon will provide information about confirmed certified modules through D-Bus (measurement data of each connected endpoint which supports SPDM).
 Also, in the future, it will provide means for secure SPDM transmission.
-We do not predict more than one SPDM deamon in the system.
+We do not predict more than one SPDM daemon in the system.
 
-SPDM deamon should use libspdmcpp API and Linux system API. It does not call security libs or mctp APIs directly. Also most of the memory allocation should be done in libspdmcpp and not in the spdmcppd.
-This approach should move testing of proper memory usage to unitary tests, making the implementation of the deamon more robust.
+SPDM daemon should use libspdmcpp API and Linux system API. It does not call security libs or mctp APIs directly. Also most of the memory allocation should be done in libspdmcpp and not in the spdmd.
+This approach should move testing of proper memory usage to unitary tests, making the implementation of the daemon more robust.
 
-This assumption does not apply for Dbus connection, as it should be provided directly from spdmcppd.
-It will not be necessary to add dbus to libspdmcpp. This is because dbus is specific
-for deamon and it is not a part of the official SPDM specification.
+This assumption does not apply for D-Bus connection, as it should be provided directly from spdmd.
+It will not be necessary to add D-Bus to libspdmcpp. This is because D-Bus is specific
+for daemon and it is not a part of the official SPDM specification.
 
 #### Configuration
 
-We assume that spdm deamon will be configured using a dedicated configuration file.
+We assume that spdm daemon will be configured using a dedicated configuration file.
 Additionally, it will support run-time parameters. This approach should provide better means for development, testing and verification.
 However, it should be also possible to set default spdmd values using yocto meta-layers, so configuration file usage could be omitted.
 
 Note that the below specification may be adjusted during the implementation phase.
 
-#### Parameters for spdmcppd
+#### Parameters for spdmd
 - **--version** (-v)
-Returns spdm deamon version and compilation date.
+Returns spdm daemon version and compilation date.
 - **--help** (-h)
 Provides params syntax, also for a configuration file
 - **--verbose** [0-4]
@@ -329,20 +324,20 @@ If a config file is not found then default configuration params values will be u
 Points a log file for output debug messages.
 By default standard output is used.
 - **--service** (-s) [start|stop]
-With *start* value runs the SPDM deamon as a service. After that the command will be finished,
-SPDM deamon should be started in a spearate thread.
-With *stop* value stops the SPDM deamon thread.
+With *start* value runs the SPDM daemon as a service. After that the command will be finished,
+SPDM daemon should be started in a separate thread.
+With *stop* value stops the SPDM daemon thread.
 - **--authenticate** (-a) [RoT device ID]
 Authenticate RoT device ID and display result.
-It should be used without --service param and the SPDM deamon should be already started.
+It should be used without --service param and the SPDM daemon should be already started.
 - **--measurements** (-m) [RoT device ID]
 Get measurements from a RoT device ID and display result.
-It should be used without --service param and the SPDM deamon should be already started.
+It should be used without --service param and the SPDM daemon should be already started.
 - **--certificates** (-c) [RoT device ID]
 Get certificates from a RoT device ID and display result.
-It should be used without --service param and the SPDM deamon should be already started.
+It should be used without --service param and the SPDM daemon should be already started.
 
-#### Configuration file for spdmcppd
+#### Configuration file for spdmd
 In a case of providing the same settings through a parameter or a configuration file, the first one will be used.
 
 Configuration file is a standard human readable text file for providing configuration options.
@@ -361,37 +356,31 @@ Debug levels - the same as for verbose parameter.
 Enables or disables mutual authentication feature - by default true, if implemented.
 - **sessions_support**: [true|false];
 Enables support for sessions - by default true, if implemented.
-- **cached_authorization**: [true|false]
+- **cached_measurements**: [true|false]
 [Id device 1],
 [Id device 2];
-Enables initial authorization for the listed RoT devices. The initial authorization should be performed without an initiating dbus command.
-- **cached_authorization_delay**: [seconds];
-The initial authorization should be performed after running the deamon with a delay configured by this param.
+Enables initial getting of measurements for the listed RoT devices. The initial communication should be performed without an initiating D-Bus command.
+- **cached_measurements_delay**: [seconds];
+The initial communication should be performed after running the daemon with a delay configured by this param.
 Default value: 60.
-- **cached_authorization_renew**: [seconds];
-Renew authorization for already authenticated devices after the provided time period.
+- **cached_measurements_renew**: [seconds];
+Renew getting measurements for already authenticated devices after the provided time period.
 Value of 0 seconds makes no renew available.
 Default value: 0.
 
-#### SPDM over MCTP conneciton
-The SPDM deamon uses MCTP discovery mechanism to check available MCTP devices.
-The MCTP discovery mechanism is provided by ctrld, implemented in mctp library.
-Once all MCTP capable devices are discovered SPDM deamon will send GET_CAPABILITIES message to all devices to check, which devices support SPDM.
-
-SPDM messages will be sent using MCTP library. The messages are sent using sockets.
-
-After that part, spdmd should have a list of SPDM responders. Any authentication could be initiated in two ways:
+#### SPDM over MCTP connection
+After spdmd discovers SPDM responders, getting measurements could be initiated in two ways:
 1. Redfish client requests for authentication, certificates or measurements from an SPDM responder capable device.
-2. The SPDM deamon initiates authentication after initial delay, getting certificates or measurements basing on provided parameters or the configuration file. After that the deamon stores cached values, available for immediate answering on Redfish client queries.
+2. The SPDM daemon initiates authentication after initial delay, getting certificates or measurements basing on provided parameters or the configuration file. After that the daemon stores cached values, available for immediate answering on Redfish client queries.
 
-All cached values like authorization status, certificates and measurements are kept in the SPDM deamon.
+All cached values like authorization status, certificates and measurements are kept in the SPDM daemon and are exposed in D-Bus objects.
 
-#### Dbus communication layer
-Dbus communication layer should provide dedicated means to get all information required by Redfish schema, specific for SPDM.
+#### D-Bus communication layer
+D-Bus communication layer should provide dedicated means to get all information required by Redfish schema, specific for SPDM.
 
-SPDM deamon will use dbus API provided by [sdbusplus repo](https://github.com/openbmc/sdbusplus.git).
+SPDM daemon will use D-Bus API provided by [sdbusplus repo](https://github.com/openbmc/sdbusplus.git).
 
-Dbus requests params
+D-Bus requests params
 Id - could be a mash-up of the eRoT’s id plus protected entity’s Id (Ex: GPU’s Id)
 "Id" : "<ComponentIntegrity’s Id>"
 for example: "Chassis/{ChassisId}" or "ComputerSystems/{SystemId}/Processors/{ProcessorId}"
@@ -404,10 +393,10 @@ Request type:
 5. (optional) get session Id
 ComponentCommunication is optional for now as we don’t need to encrypt the SPDM channel between HMC and eRoT. However, SessionId property can be useful once we have a way of letting the Redfish client ask HMC to re-negotiate SPDM version and/or algorithm with the eRoT. It can indicate if the session changed after a re-negotiation.
 
-Dbus objects should not be persistent.
+D-Bus objects should not be persistent.
 The maximum number of supported MCTP/SPDM endpoints will be 255.
 
-Once the initial implementation is prepared, an exact description of dbus communication commands will be provided in this document.
+Once the initial implementation is prepared, an exact description of D-Bus communication commands will be provided in this document.
 
 ##### Error handling
 Any error occurred during communication or due to timeout will cause failure in authorization verification.
@@ -422,5 +411,5 @@ In the initial phase we assume [Apache v2](https://www.apache.org/licenses/LICEN
 Unitary tests: each function available in libspdmcpp API has to have own unitary tests.
 Requirements: 80% code coverage
 Manual verification:
-- use spdm-emu tool for manual verification of requester functionality, implemented in spdmcppd.
-- use dbus mockup requester to check dbus implementation in spdmcppd.
+- use spdm-emu tool for manual verification of requester functionality, implemented in spdmd.
+- use D-Bus mockup requester to check D-Bus implementation in spdmd.
