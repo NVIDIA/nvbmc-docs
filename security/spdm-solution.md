@@ -225,17 +225,18 @@ Additionally, the D-Bus object will have a method to get fresh measurements, wit
 - Pldm creates the inventory of the EROT
 - During creation of the inventory object pldm implements the UUID interface
    as well as the Item.ComponentIntegrity interface(Yet to be defined)
-- D-Bus client will query for all the inventory objects under pldm namespace implementing
-  the Item.ComponentIntegrity interface.
-- For each object which implements the ComponentIntegrity interface, gets the UUID
-  from that object and match with the SPDM measurement D-bus object UUID.
+- D-Bus client will query for inventory objects that implement Item.ComponentIntegrity
+  interface by the pldm service.
+- For each object which implements the ComponentIntegrity interface, gets the MCTP UUID
+  from that object and match with the MCTP D-bus object UUID which is associated with the
+  SPDM measurement D-Bus object.
 
 #### How to get the inventory path of the components protected by the EROT
 
 - Application which creates the EROT inventory object, will implement the component-
   integrity interface and its associations.
-- D-Bus client will query for all the inventory objects implementing the component-integrity interface.
-- Get the associated objects from the objects implementing the component-integrity interface.
+- D-Bus client will query for all the inventory objects implementing the Item.ComponentIntegrity interface.
+- Get the associated objects from the objects implementing the Item.ComponentIntegrity interface.
 
 ### Structure of the SPDM Module
 
