@@ -508,6 +508,43 @@ polling time. Before 'pldmd' starts to receive async event from PLDM terminus,
 commands(e.g., EventMessageBufferSize and SetEventReceiver) to PLDM terminus
 for the initialization.
 
+### Numeric Effecters
+'pldmd' should expose the found PLDM effecters to D-Bus object path. The object
+path consists of the name from Effecter Auxiliary Names PDR and TID# with the
+format, "/xyz/openbmc_project/control/<$EffecterAuxName_TID#>". If the Effecter
+Aux Name is absent, then using the format,
+"/xyz/openbmc_project/control/PLDM_Effecter_<TID#>_<EffecterID#>" instead.
+'pldmd' creates different D-Bus interface for different baseUnit in Numeric
+Effecter PDR.
+
+#### Watts
+For numeric effecter with baseUnit Watts, 'pldmd' should implement the D-Bus
+interface, xyz.openbmc_project.Control.Power.Cap, This interface display the
+present value of the effecter in PowerCap property, and Send
+SetNumericEffecterValue command to terminus if the PowerCap was set.
+
+'pldmd' will also create the association between the effecter object and the
+related 'chassis' entity found via the entity assocition PDR.
+```
+{'chassis', 'power_controls', inventory_path}
+```
+
+'pldmd' also creates `xyz.openbmc_project.State.Decorator.OperationalStatus`
+D-Bus interface, the properties values are according to the
+effecterOperationalState in response of GetNumericEffecterValue Command.
+
+| effecterOperationalState | Functional | State              |
+|--------------------------|------------|--------------------|
+| enabled-updatePending    | true       | Deferring          |
+| enabled-noUpdatePending  | true       | Enabled            |
+| disabled                 | false      | Disabled           |
+| unavailable              | false      | UnavailableOffline |
+| statusUnknown            | false      | UnavailableOffline |
+| failed                   | false      | UnavailableOffline |
+| initializing             | false      | Starting           |
+| shuttingDown             | false      | UnavailableOffline |
+| inTest                   | false      | UnavailableOffline |
+
 ### Event handling
 The pldmd might be responder to handle PlatformEventMessage from terminus
 asynchronously or be requester to send PollForPlatformEventMessage actively.
