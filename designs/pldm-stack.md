@@ -367,9 +367,10 @@ device needs to be encoded by Platform specific PDR JSON file by the platform
 developer. 'pldmd' will generate these sensor PDRs encoded by JSON files and
 parse them as the same as the PDRs fetched by PLDM terminus.
 
-'pldmd' should expose the found PLDM sensor to D-Bus object path. The object
+#### Numeric Sensors 
+'pldmd' should expose the found PLDM numeric sensor to D-Bus object path. The object
 path consists of the name from Sensor Aux Name PDR and TID# with the format,
-"/xyz/openbmc_project/sensors/<sensor_type>/<$SensorAuxName_TID#>".
+"/xyz/openbmc_project/sensors/<sensor_type>/<$SensorAuxName_SensorID#_TID#>".
 If the Sensor Aux Name is absent, then using the format,
 "/xyz/openbmc_project/sensors/<sensor_type>/PLDM_Device_<SensorID#_TID#>"
 instead. For exposing sensor status to D-Bus, 'pldmd' should implement
@@ -485,6 +486,29 @@ getting the response of GetSensorReading command successfully. If 'pldmd'
 failed to get the response from PLDM terminus or the completion code returned
 by PLDM terminus is not PLDM_SUCCESS, the Functional property of
 State.Decorator.OperationalStatus D-Bus interface should be updated to false.
+
+#### State Sensors 
+'pldmd' should expose the found PLDM state sensors to D-Bus object path. The object
+path consists of the name from Sensor Aux Name PDR and TID# with the format,
+"/xyz/openbmc_project/State/<$SensorAuxName_SensorID#_TID#>" when Aux Name PDR contains single Aux name.
+If the Sensor Aux Name is absent, OR contains more than one Aux name (composite sensor with 
+sensor count more than 1) then using the format,
+"/xyz/openbmc_project/State/PLDM_Device_<SensorID#_TID#>"
+instead.
+The dbus interface expossed by the sensor will be dependent upon the state set ids 
+present in the state sensor PDR. For each of the state id present a relavant dbus 
+interface will be implmemented. 
+Below example provides the mapping between state set id [DSP0249 1.0.0](https://www.dmtf.org/sites/default/files/standards/documents/DSP0249_1.0.0.pdf) and the chosen dbus interface. 
+| State Set ID               | Interface                                                  |       
+| ---------------------------|:----------------------------------------------------------:| 
+| Performance (14)           |  xyz.openbmc_project.State.ProcessorPerformance            | 
+| Power Supply State (256)   |  xyz.openbmc_project.State.Decorator.PowerSystemInputs     |   
+
+'pldmd' will also create the association between the state sensor object and the related 'chassis' entity 
+found via the entity assocition PDR. 
+```
+{"chassis", "all_states", inventory_path}
+```
 
 #### Polling v.s. Async method
 'pldmd' maintains a list to poll all PLDM sensors and expose the status to
