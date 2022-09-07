@@ -432,6 +432,48 @@ Example PLDM entities find their corresponding inventories.
   inventories found, it associates to the closest container inventory
   Procssor_Module0
 
+For NVidia project, the Entity Manager(EM) should expose the baseboard inventory
+and ProcessorModule inventories, EM knows the instanceNumber of the module by
+predefined I2C bus number and address in configuration JSON files. smbios-mdr
+should expose the processor inventories from SMBIOS table, the Socket
+Designation of SMBIOS table type 4 has the location information in the format
+`SilkScreenLabel:LogicalSocket.LogicalChip`, smbios-mdr find the container
+ProcessorModule inventory with the instanceNumber equal to `LogicalSocket`, then
+create the Processor inventory with the instanceNumber `LogicalChip` under the
+container's inventory.
+```
+/xyz/openbmc_project/inventory/system/board/CG4_BaseBoard (EM)
+├── CG1_Module0 (EM)
+│   └── cpu0 (smbios-mdr. Socket Designation: label:0.0)
+└── C2_Module1 (EM)
+    ├── cpu0 (smbios-mdr. Socket Designation: label:1.0)
+    └── cpu1 (smbios-mdr. Socket Designation: label:1.1)
+```
+'pldmd' creates D-Bus associations for its sensors.
+```
+Example associations of sensors with Module entity, instanceNumber 0:
+{'chassis','all_sensors', '/xyz/openbmc_project/inventory/system/board/CG4_BaseBoard/CG1_Module0'}
+Example association of sensor with Grace processor entity, instanceNumber 0, and parent is CG1_Module0:
+{'chassis','all_sensors', '/xyz/openbmc_project/inventory/system/board/CG4_BaseBoard/CG1_Module0/cpu0'}
+Example association of sensor with VREGs entity, and parent is CG1_Module0:
+{'chassis','all_sensors', '/xyz/openbmc_project/inventory/system/board/CG4_BaseBoard/CG1_Module0'}
+```
+
+But the current EM can only create inventories on the same level, it lost the
+hierarchical relation between BaseBoard and Modules. It has not caused the issue
+because we only have one BaseBoard, all instance numbers under the Processor/IO
+module(Entity ID 81) are unique, and the modules do not need the containing
+relation to find the correct inventory.
+```
+/xyz/openbmc_project/inventory/system/board
+├── CG4_BaseBoard
+├── CG1_Module0
+│   └── cpu0
+└── C2_Module1
+    ├── cpu0
+    └── cpu1
+```
+
 After doing the discovery of PLDM sensors, 'pldmd' should initialize all found
 sensors by necessary commands(e.g., SetNumericSensorEnable, SetSensorThresholds
 ,SetSensorHysteresis, and InitNumericSensor) and then start to update the
