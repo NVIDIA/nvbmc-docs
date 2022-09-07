@@ -545,6 +545,36 @@ effecterOperationalState in response of GetNumericEffecterValue Command.
 | shuttingDown             | false      | UnavailableOffline |
 | inTest                   | false      | UnavailableOffline |
 
+For NVidia Grace platform, SatMC only have 2 numeric effecters, `Set volatile
+TDP limit` and `Set non-volatile TDP limit`. Their baseUnit are both Watts,
+'pldmd' should create association like this.
+```
+{'chassis', 'power_controls', '/xyz/openbmc_project/inventory/system/board/CG4_BaseBoard/CG1_Module0/cpu0'}
+```
+
+The bmcweb query the 'power_controls' association for all Chassis, then bmcweb
+create the "/redfish/v1/Chassis/{ChassisId}/Controls/{ControlId}" for every
+objects it found.
+
+#### OEM PDR
+If 'pldmd' read any OEM PDR with vendorIANA equal to 0x1647(NVIDIA), and
+vendorSpecificData[3] equal to 0x01(Effecter Lifetime), 'pldmd' parse the OEM
+PDR as below table, and it adds the interface
+xyz.openbmc_project.State.Decorator.Lifetime to the effecter D-Bus object.
+
+|       Type  |     OEM PDR Description  |                                                      OEM Effecter Lifetime PDR Description                                                  |
+|-------------|:------------------------:|:-------------------------------------------------------------------------------------------------------------------------------------------:|
+|     -       |   commonHeader           |   commonHeader                                                                                                                              |
+|     uint32  |   vendorIANA             |   vendorIANA – 0x1647 for NVIDIA                                                                                                            |
+|     uint16  |   OEMRecordID            |   OEMRecordID – as same as EffecterID for this OEM Effecter Lifetime PDR                                                                    |
+|     uint16  |   dataLength             |   dataLength                                                                                                                                |
+|     byte    |   vendorSpecificData[1]  |   Lower byte of the PLDMTerminusHandle                                                                                                      |
+|     byte    |   vendorSpecificData[2]  |   Upper byte of the PLDMTerminusHandle                                                                                                      |
+|     Byte    |   vendorSpecificData[3]  |   OEM PDR type – 0x01 for this OEM Effecter Lifetime PDR                                                                                    |
+|     byte    |   vendorSpecificData[4]  |   OEM Effecter Lifetime ID  0x00 – volatile (valid until next reset)  0x01 – non-volatile (permanent unless a variable storage is cleared)  |
+|     byte    |   vendorSpecificData[5]  |   Lower byte of the associated Effecter ID                                                                                                  |
+|     byte    |   vendorSpecificData[6]  |   Upper byte of the associated Effecter ID                                                                                                  |
+
 ### Event handling
 The pldmd might be responder to handle PlatformEventMessage from terminus
 asynchronously or be requester to send PollForPlatformEventMessage actively.
