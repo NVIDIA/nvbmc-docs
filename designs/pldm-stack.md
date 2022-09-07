@@ -380,6 +380,58 @@ the interface exposes the sensor reading unit, value, Max/Min Value.
 - [xyz.openbmc_project.State.Decorator.OperationalStatus](https://github.com/openbmc/phosphor-dbus-interfaces/blob/master/yaml/xyz/openbmc_project/State/Decorator/OperationalStatus.interface.yaml),
 the interface exposes the sensor status which is functional or not.
 
+- [xyz.openbmc_project.Association.Definitions](https://github.com/openbmc/phosphor-dbus-interfaces/blob/master/yaml/xyz/openbmc_project/Association/Definitions.interface.yaml)  
+'pldmd' builds a containment hierarchy from Entity Association PDR, the
+hierarchy contains all entities, and each entity looks for its D-Bus inventory
+by looking for relevant D-Bus interfaces, and the matched InstanceNumber in
+D-Bus interface Decorator.Instance. Below example provides the mapping between
+PLDM Entity [DSP0249
+1.0.0](https://www.dmtf.org/sites/default/files/standards/documents/DSP0249_1.0.0.pdf)
+and the chosen dbus interface.
+
+| PLDM Entity                         | D-Bus interface                                    |
+|-------------------------------------|----------------------------------------------------|
+| Overall System(Container ID 0x0000) | xyz.openbmc_project.Inventory.Item.System          |
+| Processor/IO module(Entity ID 81)   | xyz.openbmc_project.Inventory.Item.ProcessorModule |
+| Processor(Entity ID 135)            | xyz.openbmc_project.Inventory.Item.Cpu             |
+
+When there are multiple D-Bus inventories match the D-Bus interface and
+InstanceNumber, 'pldmd' looks for the D-Bus path under its container's inventory
+path. For example a PLDM entity may match both: `/foo1/bar0` and `/foo2/bar0`,
+in this case pldmd would get the entity's parent from association PDRs and that
+would match foo1 or foo2; if a match occurs at this stage then we're good, else
+continue. Match should stop at top-most entity which should match Item.System.
+
+Every PLDM sensor adds the DBus association with its DBus inventory, if the
+entity does not find a DBus inventory, look for the closest container entity
+inventory from the hierarchy.
+```
+{'chassis','all_sensors', inventory}
+```
+
+e.g., There are existing D-Bus inventories below:
+```
+/xyz/openbmc_project/inventory/system/board/BaseBoard - Item.System
+├── Procssor_Module0 - Item.ProcessorModule - InstanceNumber 0
+│   └── Processor0 - Item.Cpu - InstanceNumber 0
+└── Procssor_Module1 - Item.ProcessorModule - InstanceNumber 1
+    ├── Processor0 - Item.Cpu - InstanceNumber 0
+    └── Processor1 - Item.Cpu - InstanceNumber 1
+```
+
+Example PLDM entities find their corresponding inventories.
+- A: EntityId 81, EntityInstance 0, it associates to Procssor_Module0
+- B: EntityId 81, EntityInstance 1, it associates to Procssor_Module1
+- C: EntityId 135, EntityInstance 0, container is A, it associates to Processor0
+  under Procssor_Module0
+- D: EntityId 135, EntityInstance 0, container is B, it associates to Processor0
+  under Procssor_Module1
+- E: EntityId 135, EntityInstance 1, container is B, it associates to Processor1
+  under Procssor_Module1
+- F: EntityId 143(Memory controller), container is A, no corresponding
+  inventories found, it associates to the closest container inventory
+  Procssor_Module0
+
 After doing the discovery of PLDM sensors, 'pldmd' should initialize all found
 sensors by necessary commands(e.g., SetNumericSensorEnable, SetSensorThresholds
 ,SetSensorHysteresis, and InitNumericSensor) and then start to update the
