@@ -372,7 +372,7 @@ parse them as the same as the PDRs fetched by PLDM terminus.
 path consists of the name from Sensor Aux Name PDR and TID# with the format,
 "/xyz/openbmc_project/sensors/<sensor_type>/<$SensorAuxName_SensorID#_TID#>".
 If the Sensor Aux Name is absent, then using the format,
-"/xyz/openbmc_project/sensors/<sensor_type>/PLDM_Device_<SensorID#_TID#>"
+"/xyz/openbmc_project/sensors/<sensor_type>/PLDM_Sensor_<SensorID#_TID#>"
 instead. For exposing sensor status to D-Bus, 'pldmd' should implement
 following D-Bus interfaces to the D-Bus object path of PLDM sensor.
 - [xyz.openbmc_project.Sensor.Value](https://github.com/openbmc/phosphor-dbus-interfaces/blob/master/yaml/xyz/openbmc_project/Sensor/Value.interface.yaml),
@@ -490,22 +490,25 @@ State.Decorator.OperationalStatus D-Bus interface should be updated to false.
 #### State Sensors 
 'pldmd' should expose the found PLDM state sensors to D-Bus object path. The object
 path consists of the name from Sensor Aux Name PDR and TID# with the format,
-"/xyz/openbmc_project/State/<$SensorAuxName_SensorID#_TID#>" when Aux Name PDR contains single Aux name.
-If the Sensor Aux Name is absent, OR contains more than one Aux name (composite sensor with 
-sensor count more than 1) then using the format,
-"/xyz/openbmc_project/State/PLDM_Device_<SensorID#_TID#>"
-instead.
-The dbus interface expossed by the sensor will be dependent upon the state set ids 
-present in the state sensor PDR. For each of the state id present a relavant dbus 
-interface will be implmemented. 
+"/xyz/openbmc_project/state/<$SensorAuxName_SensorID#_TID#>/Id_<StateSetIndex#>"
+StateSetIndex# will be 0 based and will be incremented for each state-set id found under the same composite state sensor. 
+If the Sensor Aux Name is absent, OR contains more than one Aux name 
+(composite sensor with sensor count more than 1), then using the format, 
+"/xyz/openbmc_project/state/PLDM_Sensor_<SensorID#_TID#>/Id_<StateSetIndex#>" instead.
+
+The dbus interface exposed by the sensor will be dependent upon the state set ids 
+present in the state sensor PDR. For each of the state id present a relevant dbus 
+interface will be implemented. 
 Below example provides the mapping between state set id [DSP0249 1.0.0](https://www.dmtf.org/sites/default/files/standards/documents/DSP0249_1.0.0.pdf) and the chosen dbus interface. 
 | State Set ID               | Interface                                                  |       
 | ---------------------------|:----------------------------------------------------------:| 
 | Performance (14)           |  xyz.openbmc_project.State.ProcessorPerformance            | 
 | Power Supply State (256)   |  xyz.openbmc_project.State.Decorator.PowerSystemInputs     |   
 
-'pldmd' will also create the association between the state sensor object and the related 'chassis' entity 
-found via the entity assocition PDR. 
+'pldmd' will also create the association between the state sensor object and the related 'chassis/system' entity 
+found via the entity association PDR. 
+
+Example:
 ```
 {"chassis", "all_states", inventory_path}
 ```
@@ -598,6 +601,40 @@ xyz.openbmc_project.State.Decorator.Lifetime to the effecter D-Bus object.
 |     byte    |   vendorSpecificData[4]  |   OEM Effecter Lifetime ID  0x00 – volatile (valid until next reset)  0x01 – non-volatile (permanent unless a variable storage is cleared)  |
 |     byte    |   vendorSpecificData[5]  |   Lower byte of the associated Effecter ID                                                                                                  |
 |     byte    |   vendorSpecificData[6]  |   Upper byte of the associated Effecter ID                                                                                                  |
+
+### State Effecters
+'pldmd' should expose the found PLDM state effecters to D-Bus object path. The object
+path consists of the name from Effecter Aux Name PDR and TID# with the format,
+"/xyz/openbmc_project/control/<$EffecterAuxName_EffecterID#_TID#>/Id_<StateSetIndex#>"
+StateSetIndex# will be 0 based and will be incremented for each state-set id found under the same composite state effecter. 
+If the Effecter Aux Name is absent, OR contains more than one Aux name (composite effecter with 
+effecter count more than 1) then using the format, 
+"/xyz/openbmc_project/control/PLDM_Effecter_<EffecterID#_TID#>/Id_<StateSetIndex#>" instead. 
+There will be unique dbus object paths per state-set id included in the state-set effecter. 
+
+The dbus interface exposed by the state effecter will be dependent upon the state-set ids 
+present in the state effecter PDR. For each of the state-set id present a relevant dbus 
+interface will be implemented. 
+Below example provides the mapping between state-set id 
+[DSP0249 1.0.0](https://www.dmtf.org/sites/default/files/standards/documents/DSP0249_1.0.0.pdf) and the chosen dbus interface. 
+
+| State Set ID               | Interface                                                  | 
+| ---------------------------|:----------------------------------------------------------:| 
+| Remote Debug Enable (33)   | xyz.openbmc_project.Control.Processor.RemoteDebug          |
+
+The association between State Effecter and the Chassis/System entity object would be created by pldmd 
+as per the association string mentioned in the table above. 
+
+'pldmd' also creates `xyz.openbmc_project.State.Decorator.OperationalStatus`
+D-Bus interface similar to that of the Numeric effecter described in the above section. 
+
+'pldmd' will also create the association between the state effecter object and the related 'chassis/system' entity 
+found via the entity association PDR. 
+
+Example:
+```
+{"chassis", "all_controls", inventory_path}
+```
 
 ### Event handling
 The pldmd might be responder to handle PlatformEventMessage from terminus
