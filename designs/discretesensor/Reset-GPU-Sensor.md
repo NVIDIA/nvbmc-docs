@@ -16,6 +16,7 @@ The openbmc project currently has a phosphor-ipmi-host repository to support the
 
 - Entity manager, Dbus-Sensor
 - VR Sensor - [https://gerrit.openbmc.org/c/openbmc/phosphor-host-ipmid/+/42776](https://gerrit.openbmc.org/c/openbmc/phosphor-host-ipmid/+/42776)
+- Reset status interface - [https://gitlab-collab-01.nvidia.com/viking-team/phosphor-dbus-interfaces/-/blob/develop/yaml/xyz/openbmc_project/State/ResetStatus.interface.yaml](https://gitlab-collab-01.nvidia.com/viking-team/phosphor-dbus-interfaces/-/blob/develop/yaml/xyz/openbmc_project/State/ResetStatus.interface.yaml)
 - SMBPI Document DG-06034-002_v05.1.pdf
 
 ## Requirements
@@ -41,41 +42,42 @@ The openbmc project currently has a phosphor-ipmi-host repository to support the
                           +--------------------------+-----------+
                           |                          |
                +----------+--------------------------+----------+
-               |          |                          |          |
-               |  +-------v--------+        +--------v-------+  | SMBPBI(I2C) Interface
-+-----------+  |  |                |        |                |  |  +------------------+
-|sysfs path <--+-->   HwmonTemp    |. . . . |   gpuStatus    <--+--+--+   +-------+   |
-+-----------+  |  |    Sensor      |        |                |  |  |  |   | GPU1  |   |
-               |  +-------+--------+        +--------+-------+  |  |  +---+       |   |
-               |          |                          |          |  |  |   +-------+   |
-               |          +-------------+------------+          |  |  |               |
-               |                        |                       |  |  |   +-------+   |
-               |  +---------------------v--------------------+  |  |  |   | GPU2  |   |
-               |  |                                          |  |  |  +---+       |   |
+               |          |                          |          | D-bus signal
+               |  +-------v--------+        +--------v-------+  |  +------------------+
++-----------+  |  |                |        |                |  |  |                  |
+|sysfs path <--+-->   HwmonTemp    |. . . . |   gpuStatus    <--+--+     gpumgrd      |
++-----------+  |  |    Sensor      |        |                |  |  |                  |
+               |  +-------+--------+        +--------+-------+  |  |                  |
+               |          |                          |          |  +--^---------------+
+               |          +-------------+------------+          |     |
+               |                        |                       |     |
+               |  +---------------------v--------------------+  |     | SMBPBI(I2C) Interface
+               |  |                                          |  |  +--+---------------+
                |  |              Dbus-Objects                |  |  |  |   +-------+   |
-               |  |                                          |  |  |  |               |
-               |  +---------------------+--------------------+  |  |  |   +-------+   |
-               |dbus-sensors            |                       |  |  |   | GPUn  |   |
-               +------------------------+-----------------------+  |  +---+       |   |
+               |  |                                          |  |  |  |   | GPU1  |   |
+               |  +---------------------+--------------------+  |  |  +---+       |   |
+               |dbus-sensors            |                       |  |  |   +-------+   |
+               +------------------------+-----------------------+  |  |               |
+                                        |                          |  |   +-------+   |
+                                        |                          |  |   | GPU2  |   |
+                          +-------------v--------------+           |  +---+       |   |
+                          |                            |           |  |   +-------+   |
+                          |Phosphor-ipmi-host(dbus-sdr)|           |  |               |
+                          |                            |           |  |   +-------+   |
+                          +-------------^--------------+           |  |   | GPUn  |   |
+                                        |                          |  +---+       |   |
                                         |                          |      +-------+   |
-                                        |                          | Baseboard        |
-                          +-------------v--------------+           +------------------+
-                          |                            |
-                          |Phosphor-ipmi-host(dbus-sdr)|
-                          |                            |
-                          +-------------^--------------+
-                                        |
-                                        |
-                               +--------v-----------+
-                               |      IPMITool      |
-                               +--------------------+
+                               +--------v-----------+              | Baseboard        |
+                               |      IPMITool      |              +------------------+
+                               +--------------------+              
+
 ```
 The new code would be creating new services under dbus-sensor package.
 
 - Sensor configuration would be part of the entity-manager JSON configuration.
 - Inventory objects which are created by entity-manager is used by dbus-sensor services to create 
   sensor objects and monitor.
-- Dbus-sensor service will be using asynchronous timer to poll and get GPU status.
+- Dbus-sensor service will be using dbus signal monitor to get GPU status.
 - Phosphor-ipmi-host package is responsible for collecting sensors based on interface and converting into IPMI specification.
 
 ### Brief Design Points of GPU OEM sensor
@@ -83,33 +85,43 @@ The new code would be creating new services under dbus-sensor package.
 - Sensor Configuration would be part of entity-manager JSON configuration file
 - Entity Manager will be creating inventory dbus objects with properties from JSON configuration file. Interfaces are created by using Type configuration in json
 - GPU status service will be traversing entity manager inventory dbus objects and segregating by interface (Type) and creating sensor objects with OEM reset GPU interface
-  - Once Dbus object created, it start reading GPU state flag using asynchronous timer with 2sec delay.
-  - It will request access privilege as BMC to FPGA.
-  - Once BMC get a privilege, will intiate SMBPI command to all the GPU to get Reset_required state flag
-  - Based on the GPU Reset Required State flag, status(GPUStatusn) property gets updated as string(ResetRequired)
+- gpustatus service will be looking for properties changed signal from dbus on ResetRequired property under xyz.openbmc_projec.
+State.ResetStatus interface
+- Based on the ResetRequired property boolean value(true/false)change, status(GPUStatus[n]) property gets updated
 - Phosphor-ipmi-host dbus-sdr will be getting sensor objects using &quot;getsubtree&quot; dbus method call
-- The dbus Interfaces are matched and sdr properties and sensor status constructed respectively
-
-#### GPU SMBPI Command:
-
-| Opcode | Arg1 | Arg2 | State Bit |
-| --- | --- | --- | --- |
-| 0x18 - Query GPU State Flags | 0x01 - Device State Flags Page 1 | Unused | Bit[0] 0 - GPU Reset Not Required |
-|||| 1 - GPU Reset Required |
+- The dbus interfaces are matched and sdr properties and sensor status constructed respectively
 
 #### RST_GPU Configuration
 ```
     {
         "Name": "RST_GPU",
         "EntityId": "0x06",
-        "Bus1": "0x01",
-        "Bus2": "0x02",
-        "Address1": ["0x44", "0x45", "0x46", "0x47"],
-        "Address2": ["0x44", "0x45", "0x46", "0x47"],
-        "Type": "rstgpu"
+        "Type": "rstgpu",
+        "TotalGpu": 4
     }
 ```
-### Representation of dbus interfaces
+
+### GPU Manager ResetStatus interface
+```
+description: >
+   Implement to provide GPU Reset Requirements.
+
+properties:
+    - name: ResetRequired
+      type: boolean
+      description: >
+            Represents Reset Requirement.
+flags:
+          - readonly
+    - name: DrainAndResetRequired
+      type: boolean
+      description: >
+            Represents Drain and Reset Requirement.
+flags:
+          - readonly
+```
+
+### Representation of sensor dbus interfaces
 
 | Sensor Name | Object | Interfaces | Property | Value |
 | --- | --- | --- | --- | --- |
