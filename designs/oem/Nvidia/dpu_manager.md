@@ -15,9 +15,8 @@ DPU Manager will support DPU unique units access by implementing DPU specific D-
 It will enable support Redfish and Ipmi features separate DPU specific logic implemention from bmcweb and nvidia-impi-oem.
 
 ### DPU Manager current features
-- DPU Ethernet Interface
-- DPU SW Versions
-- DPU Chassis Networkadapters
+- DPU Ethernet Interface and DPU Chassis Networkadapters using D-bus EthernetInterface, IP interface and MAC Interface
+- DPU SW Versions using D-bus Version interface
 
 ### DPU Manager future features
 - DPU Processors
@@ -37,7 +36,8 @@ Protocol layer is a wrapper to the interfaces communication protocols.
 Giving generic interface to the different protocols. 
 Protocol layer will support iteration, identification through StringId, read and write of data raw data.
 Iteration and identification will enable us to create object dynamically.
-Read and Write of raw data keeps separation between protocol and data itself. 
+Read and Write of raw data keeps separation between protocol and data itself.
+Currently support IPMB, future should support i2c, and others
 
 ### FRU parser layer
 FRU parser is created per FRU data message.
@@ -85,6 +85,12 @@ D-Bus object can use more than one FRU parser, when object need to access data f
  ┌─▼────┴─┐  ┌─▼────┴─┐  ┌─▼────┴─┐
  │  DPU   │  │  NIC   │  │ Switch │
  └────────┘  └────────┘  └────────┘
+
+## Example case
+Ethernet Manager will use IPMB protocol, it will iterate over all FRUs and check string ids.
+For each fru with string id == eth# a eth parser object and a D-bus object will be created.
+Eth parser will read the fru and parse the fields IP, MAC, MTU .. etc.
+The dbus object will use EthernetInterface to read/write the fields from the parser to read the fields.
 
 ## Alternatives Considered
 Implement logic under bmcweb/nvidia-impi-oem
