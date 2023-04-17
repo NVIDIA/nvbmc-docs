@@ -92,6 +92,11 @@ For each fru with string id == eth# a eth parser object and a D-bus object will 
 Eth parser will read the fru and parse the fields IP, MAC, MTU .. etc.
 The dbus object will use EthernetInterface to read/write the fields from the parser to read the fields.
 
+## Redfish current features paths
+/redfish/v1/UpdateService/FirmwareInventory
+/redfish/v1/Chassis/Card1/NetworkAdapters/ConnectX/NetworkDeviceFunctions/eth<n>
+/redfish/v1/Chassis/Card1/NetworkAdapters/NvidiaNetworkAdapter/Ports/eth<n>
+
 ## Alternatives Considered
 Implement logic under bmcweb/nvidia-impi-oem
 Implement D-Bus object on other common project
