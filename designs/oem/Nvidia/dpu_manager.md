@@ -21,13 +21,13 @@ It will enable support Redfish and Ipmi features separate DPU specific logic imp
 ### DPU Manager future table
 |Feature|Source |Content Protocol |D-Bus interfaces |Redfish interfaces|
 |:----|:----|:----|:----|:----|
-|Dpu Ethernet|DPU Ipmb sdr Ethn|OEM|Ethernet, IP , Mac|EthernetInterface, Chassis Ports, chassis network function|
-|Dpu Versions|DPU Ipmb SDR fw info|OEM|Version|FirmwareInventory|
-|Dpu Processors |tbd|TBD|CPU|Processors|
-|Disable/Enable DPU eth port in 3-port switch|Switch i2c|OEM|OEM:TorSwitchPortsMode(wip)|OEM:TBD|
-|enable rshim over USB|TBD|OEM|Reset|OEM:TBD|
-|Support for the BMC to query the strap values of the NIC|NIC MCTP/I2c|OEM|TBD|TBD|
-|Redfish based FW configuration to switch between BF DPU mode and enhanced NIC mode|TBD|OEM|Reset|OEM:TBD|
+|Dpu Ethernet|DPU Ipmb  Eth<n>|OEM: Propriety file read from the dpu|Ethernet, IP , Mac|EthernetInterface, Chassis Ports, chassis network function|
+|Dpu Versions|DPU Ipmb  fw info|OEM: Propriety file read from the dpu|Version|FirmwareInventory|
+|Dpu Processors |TBD|TBD|CPU|Processors|
+|Disable/Enable DPU eth port in 3-port switch|Switch i2c|OEM:TBD|OEM:TorSwitchPortsMode(wip)|OEM:TBD|
+|enable rshim over USB|TBD|OEM:TBD|Reset|OEM:TBD|
+|Support for the BMC to query the strap values of the NIC|NIC MCTP/I2c|OEM:TBD|TBD|TBD|
+|Redfish based FW configuration to switch between BF DPU mode and enhanced NIC mode|TBD|OEM:TBD|Reset|OEM:TBD|
 |DPU Dram|TBD|TBD|DIMM|memory|
 
 ## Requirements
