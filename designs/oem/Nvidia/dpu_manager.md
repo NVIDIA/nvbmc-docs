@@ -18,16 +18,23 @@ It will enable support Redfish and Ipmi features separate DPU specific logic imp
 - DPU Ethernet Interface and DPU Chassis Networkadapters using D-bus EthernetInterface, IP interface and MAC Interface
 - DPU SW Versions using D-bus Version interface
 
-### DPU Manager future features
-- DPU Processors
-- DPU DRAM
-- DPU Nic Flash
+### DPU Manager future table
+|Feature|Source |Content Protocol |D-Bus interfaces |Redfish interfaces|
+|:----|:----|:----|:----|:----|
+|Dpu Ethernet|DPU Ipmb sdr Ethn|OEM|Ethernet, IP , Mac|EthernetInterface, Chassis Ports, chassis network function|
+|Dpu Versions|DPU Ipmb SDR fw info|OEM|Version|FirmwareInventory|
+|Dpu Processors |tbd|TBD|CPU|Processors|
+|Disable/Enable DPU eth port in 3-port switch|Switch i2c|OEM|OEM:TorSwitchPortsMode(wip)|OEM:TBD|
+|enable rshim over USB|TBD|OEM|Reset|OEM:TBD|
+|Support for the BMC to query the strap values of the NIC|NIC MCTP/I2c|OEM|TBD|TBD|
+|Redfish based FW configuration to switch between BF DPU mode and enhanced NIC mode|TBD|OEM|Reset|OEM:TBD|
+|DPU Dram|TBD|TBD|DIMM|memory|
 
 ## Requirements
 - DPU units should be availble on Redfish and IPMI
 - DPU Manager will provide read/write access to different DPU units using on D-Bus interfaces
 - DPU Unit will communicate with DPU Manager using D-Bus services to access the DPU units
-- DPU Manager should only include services that aren’t exist in generic BMC D-Bus services and aren’t needed by other platforms
+- DPU Manager should only include services that does not exist in generic BMC D-Bus services and aren’t needed by other platforms!
  
 ## Proposed Design
 DPU Manager will be split in to three layers D-Bus object, FRU Parser and protocol enabling addition or change of message, protocol, or interface with minimal change and reuse each layer for other services.
@@ -40,6 +47,7 @@ Read and Write of raw data keeps separation between protocol and data itself.
 Currently support IPMB, future should support i2c, and others
 
 ### FRU parser layer
+Parser layer is parsing the the fru content manly using protocols that are specific to DPU platform.
 FRU parser is created per FRU data message.
 FRU parser can be used by more than one D-Bus, when FRU data needed by more than one object
 FRU Parser will provide everything related to internal protocol from recognizing the right FRU by the String Id to parsing of the fields form raw data according to the protocol.
