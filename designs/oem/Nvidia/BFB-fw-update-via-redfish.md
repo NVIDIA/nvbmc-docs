@@ -2,7 +2,7 @@
 
 Author: Orit Kashany
 
-Created: August 2, 2023
+Created: September 10, 2023
 
 ## Problem Description
 The objective of this feature is to enhance the firmware update implementation by adding support for
@@ -58,44 +58,43 @@ accept remote host keys as in SSH. Additionally, the (-o) option for passing opt
 the RemoteServerCertification field for host authentication.   
 4. The progress of the transfer will be only 0 or 100, as the SCP progress meter is disabled in cases where
 the STDERR is not redirected to TTY.
+5. When using DropbearSSH to transfer a file to /dev/rshim0/boot (a device file) using SCP, an "Invalid argument"
+error is generated at the end of the transmission, although the transfer completes successfully.
+Apparently OpenSSH's SCP has an S_ISREG() test guarding the truncate
+(https://github.com/openssh/openssh-portable/blob/64e0600f23c6dec36c3875392ac95b8a9100c2d6/scp.c#L1934-L1935),
+whereas Dropbear's does not
+(https://github.com/mkj/dropbear/blob/9925b005e5b71080535afc94955ef2fe8c9d4c77/src/scp.c#L1054-L1055).
+This behavior forces us to ignore Dropbear SCP failures during the transfer.
 
 ## Proposed Design - BFB Update
 The general flow is described in the following sequence diagram:
 ![](BFB_fw_update_via_redfish_flow.png)
 
 ### Enabling the RShim interface on BMC
-The user is required to enable the BMC RShim interface before initiating the update procedure.
+The user is required to enable the BMC RShim before initiating the update procedure.
 A new OEM property will be added to the Managers schema under Bluefield_BMC/Oem/Nvidia:
 ```
-https://<bmc_ip>/redfish/v1/Managers/Bluefield_BMC
+https://<bmc_ip>/redfish/v1/Managers/Bluefield_BMC/Oem/Nvidia
 {
-  ....
-  "Oem": {
-    "@odata.id": "/redfish/v1/Managers/Bluefield_BMC/Oem",
-    "@odata.type": "#OemManager.Oem",
-    "OpenBmc": {
-      ...
-      }
-    "Nvidia": {
-        "BmcRShim": {
-          "BmcRShimEnabled": false
-        }
-      }
-    }
-  },
-  ...
+  "BmcRShim": {
+    "BmcRShimEnabled": false
+  }
 }
 
-curl -k -H "X-Auth-Token: $token" -X GET https://$bmc/redfish/v1/Managers/Bluefield_BMC
+curl -k -H "X-Auth-Token: $token" -H "Content-Type: application/json" -X GET https://$bmc/redfish/v1/Managers/Bluefield_BMC/Oem/Nvidia
 
-curl -k -H "X-Auth-Token: $token" -X PATCH https://$bmc/redfish/v1/Managers/Bluefield_BMC/Oem/Nvidia/BmcRShim -d '{"BmcRShimEnabled":true}'
+curl -k -H "X-Auth-Token: $token" -H "Content-Type: application/json" -XPATCH -d '{
+      "BmcRShim": {
+        "BmcRShimEnabled": true
+      }
+}' https://$bmc/redfish/v1/Managers/Bluefield_BMC/Oem/Nvidia
 ```
-- The Managers/Bluefield_BMC GET command will be used to check whether the BMC RShim is currently enabled or disabled
-by reading the property "ActiveState" of "org.freedesktop.systemd1.Unit" interface in service "org.freedesktop.systemd1"
-object "/org/freedesktop/systemd1/unit/rshim_2eservice". In addition, the implementation will Verify
-that /dev/rshim0 exists.
-- The BmcRShimEnabled PATCH command will provide the ability to enable or disable the BMC RShim,
-using the methods "enabled" and "disabled" of "org.freedesktop.systemd1.Unit" interface in service "org.freedesktop.systemd1"
+- The GET command will be used to check whether the BMC RShim is currently enabled or disabled
+by verifying that /dev/rshim0 exists and reading the property "ActiveState" of "org.freedesktop.systemd1.Unit" 
+interface in service "org.freedesktop.systemd1" object "/org/freedesktop/systemd1/unit/rshim_2eservice". 
+
+- The PATCH command will provide the ability to enable or disable the BMC RShim,
+using the methods "Start" and "Stop" of "org.freedesktop.systemd1.Unit" interface in service "org.freedesktop.systemd1"
 object "/org/freedesktop/systemd1/unit/rshim_2eservice".
 ```
 busctl introspect org.freedesktop.systemd1 /org/freedesktop/systemd1/unit/rshim_2eservice
@@ -107,7 +106,10 @@ org.freedesktop.systemd1.Unit       interface -               -                 
 ...
 .ActiveState                        property  s               "active"                                 emits-change
 ```
-Givan that this API is platform-specific, its implementation will be protected with an 'ifdef' and only compiled when the right flag is added.
+Note that it is under user's responsibility to first disable the RShim on the host before enabling the BMC RShim.
+
+Given that this API is platform-specific, its implementation will be protected with an 'ifdef' 
+BMCWEB_ENABLE_NVIDIA_OEM_BF_PROPERTIES and only compiled when the right flag is added.
 
 ### Server-Client Mutual Authentication
 #### PublicKeyExchange
@@ -134,14 +136,36 @@ https://<bmc_ip>/redfish/v1/UpdateService/Oem/Nvidia/PublicKeyExchange
       "Name": "RemoteServerKeyString",
       "Required": true,
       "DataType": "String",
-      "Description": "Remote server key string"
+      "Description": "The remote server's public key string ("<type> <key>")"
     }
   ]    
 }
 
+Request:
 curl -k -H "X-Auth-Token: <token>" -H "Content-Type: application/json" -X POST -d
 '{"RemoteServerIP":"<IPAddress>", "RemoteServerKeyString":"<PublicKey>"}'
 https://$bmc/redfish/v1/UpdateService/Actions/UpdateService.PublicKeyExchange
+
+curl -k -H "X-Auth-Token: $token" -H "Content-Type: application/json" -X POST -d '{"RemoteServerIP":"10.237.69.203", "RemoteServerKeyString":"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICO3M+a95s3QfhraC5MHZdd92Ex37mo59HF+7rOEs2Hl"}' https://$bmc/redfish/v1/UpdateService/Actions/Oem/NvidiaUpdateService.PublicKeyExchange
+{
+  "@Message.ExtendedInfo": [
+    {
+      "@odata.type": "#Message.v1_1_1.Message",
+      "Message": "Please add the following public key info to ~/.ssh/authorized_keys on the remote server",
+      "MessageArgs": [
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEPKltfiWUKXYgZ97esJHdLTFeSECLidTzlV8GeCpt4s root@dpu-bmc"
+      ],
+    },
+    {
+      "@odata.type": "#Message.v1_1_1.Message",
+      "Message": "The request completed successfully.",
+      "MessageArgs": [],
+      "MessageId": "Base.1.15.0.Success",
+      "MessageSeverity": "OK",
+      "Resolution": "None"
+    }
+  ]
+}
 ```
 Input parameters: "RemoteServerIP" and "RemoteServerKeyString"
 Output parameters: "ClientHostName" and "ClientKeyString"
@@ -152,9 +176,8 @@ Output: "root@dpu-bmc" , "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEPKltfiWUKXYgZ97e
 All the required information for the remote server authentication can be found in the second line of the ssh-keyscan response.
 ```
 ssh-keyscan -t <key_algorithm> <remote_server_ip>
-```
+
 For example:
-```
 ssh-keyscan -t ed25519 10.237.69.203
 # 10.237.69.203:22 SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.1
 10.237.69.203 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICO3M+a95s3QfhraC5MHZdd92Ex37mo59HF+7rOEs2Hl
@@ -165,15 +188,15 @@ PublicKey = AAAAC3NzaC1lZDI1NTE5AAAAICO3M+a95s3QfhraC5MHZdd92Ex37mo59HF+7rOEs2Hl
 The action will use the methods AddRemoteServerPublicKey and the property SelfPublicKey
 in the SCP interface described below.
 
-#### RevokeRemoteServerPublicKey
-In addition, a new OEM command will be added to the UpdateService schema under Oem/Nvidia for revoking remote server public key:
+### Revoking all server public keys
+This action will be used for revoking all the keys of the given remote server from the ~/.ssh/known_hosts file.
 ```
-https://<bmc_ip>/redfish/v1/UpdateService/Oem/Nvidia/RevokeRemoteServerPublicKey
+https://<bmc_ip>/redfish/v1/UpdateService/Oem/Nvidia/RevokeAllRemoteServerPublicKeys
 {
-  "@odata.id": "/redfish/v1/UpdateService/Oem/Nvidia/RevokeRemoteServerPublicKey",
+  "@odata.id": "/redfish/v1/UpdateService/Oem/Nvidia/RevokeAllRemoteServerPublicKeys",
   "@odata.type": "#ActionInfo.v1_2_0.ActionInfo",
-  "Id": "RevokeRemoteServerPublicKey",
-  "Name": "Revoke remote server public key",
+  "Id": "Revoke all remote server public keys",
+  "Name": "RevokeAllRemoteServerPublicKeys",
   "Parameters": [
     {
       "Name": "RemoteServerIP",
@@ -184,16 +207,24 @@ https://<bmc_ip>/redfish/v1/UpdateService/Oem/Nvidia/RevokeRemoteServerPublicKey
   ]
 }
 
-curl -k -H "X-Auth-Token: <token>" -H "Content-Type: application/json" -X POST -d
-'{"RemoteServerIP":"<IPAddress>"}'
-https://$bmc/redfish/v1/UpdateService/Actions/UpdateService.RevokeRemoteServerPublicKey
-```
-The action will use the method RevokeRemoteServerPublicKey in the SCP interface described below.
+Request:
+curl -k -H "X-Auth-Token: $token" -H "Content-Type: application/json" -X POST -d '{"RemoteServerIP":"<IP>"}' 
+https://$bmc/redfish/v1/UpdateService/Actions/Oem/NvidiaUpdateService.RevokeAllRemoteServerPublicKeys
 
-Note that these actions are currently under UpdateService/Oem/Nvidia but are planned to be official (i.e under UpdateService)
-around mid September.
-Given that these APIs are platform-specific, their implementation will be protected with an 'ifdef' and only compiled when the
-right flag is added.
+Answer:
+{
+  "@Message.ExtendedInfo": [
+    {
+      "@odata.type": "#Message.v1_1_1.Message",
+      "Message": "The request completed successfully.",
+      "MessageArgs": [],
+      "MessageId": "Base.1.15.0.Success",
+      "MessageSeverity": "OK",
+      "Resolution": "None"
+    }
+  ]
+}
+```
 
 ### Pushing the image
 The implementation is structured into three distinct layers:
@@ -256,7 +287,7 @@ The protocol used to transfer the firmware image. The only supported protocol is
 The array of target URIs to apply the firmware update. In our case, only one update is allowed at a time, 
 meaning the user needs to provide just one URI. Users are limited to using only the URIs under
 UpdateService/FirmwareInventory for which their "updateable" field is true.
-In our case only: /redfish/v1/UpdateService/FirmwareInventory/DPU_OS
+In our case only: redfish/v1/UpdateService/FirmwareInventory/DPU_OS
 But other services might choose other URIs.
 ```
 curl -k -H "X-Auth-Token: $token" -H "Content-Type: application/json" -X GET \
@@ -281,131 +312,46 @@ The username on the remote server to authenticate the file transfer.
 #### The SCP Interface
 OpenBMC currently only supports TFTP for firmware image transfer. To add the SCP support, a new SCP interface called
 xyz.openbmc_project.Common.SCP will be added to phosphor-dbus-interface. The SCP interface will contain three methods for
-adding and removing a new known host, and downloading firmware images, one property for holding BMC's public key
-and three properties for indicating the transfer status:
-```
-description: >
-    Implement to provide SCP (Secure Copy Protocol).
-methods:
-    - name: DownloadViaSCP
-      description: >
-          Download a file via SCP.
-      parameters:
-          - name: FilePath
-            type: string
-            description: >
-                The filepath on the remote server.
-          - name: ServerAddress
-            type: string
-            description: >
-                The SCP Server IP Address.
-          - name: Target
-            type: string
-            description: >
-                The target directory to apply the image.
-          - name: Username
-            type: string
-            description: >
-                The username to authenticate the file transfer.
-      errors:
-          - xyz.openbmc_project.Common.Error.InternalFailure
-          - xyz.openbmc_project.Common.Error.InvalidArgument
+adding and removing a new known host, and downloading firmware images, and three properties for indicating the
+transfer status:
+https://gitlab-master.nvidia.com/dgx/bmc/phosphor-dbus-interfaces/-/blob/develop/yaml/xyz/openbmc_project/Common/SCP.interface.yaml
 
-    - name: AddRemoteServerPublicKey
-      description: >
-          Add remote server public key to known_host file.
-      parameters:
-          - name: ServerAddress
-            type: string
-            description: >
-                The server IP address.
-          - name: KeyType
-            type: string
-            description: >
-                The key type.
-          - name: PublicKey
-            type: string
-            description: >
-                The remote server's public key.
 
-    - name: RevokeRemoteServerPublicKey
-      description: >
-          Remove all remote server public keys from known_host file.
-      parameters:
-          - name: ServerAddress
-            type: string
-            description: >
-                The server IP address.
-
-properties:
-    - name: SelfPublicKey
-      type: string
-      description: >
-          The BMC's public key for user authentication.
-      
-    - name: FileName
-      type: string
-      description: >
-          The name of the file that is being transferred.
-
-    - name: Target
-      type: string
-      description: >
-          The target location where the file is being transferred to.
-
-    - name: TransferStatus
-      type: enum[self.Status]
-      description: >
-          The current status of the transfer.
-
-enumerations:
-    - name: Status
-      description: >
-          Enumeration representing the possible statuses of a file transfer.
-      values:
-          - name: Started
-            description: >
-                The transfer has started.
-          - name: Invalid
-            description: >
-                The transfer failed due to invalid parameter.
-          - name: UnknownHost
-            description: >
-                The transfer failed due to unknown host.
-          - name: UnauthorizedClient
-            description: >
-                The transfer failed due to unauthorized client.
-          - name: Failed
-            description: >
-                The transfer has failed.
-          - name: Completed
-            description: >
-                The transfer has completed.
-```
 The /xyz/openbmc_project/software object in the "xyz.openbmc_project.Software.Download" service will inherit from the
 SCP interface and will perform the SCP transfer:
 ```
 busctl introspect xyz.openbmc_project.Software.Download /xyz/openbmc_project/software
 NAME                                TYPE      SIGNATURE  RESULT/VALUE   FLAGS
 ....
-xyz.openbmc_project.Common.SCP      interface -          -              -
-.DownloadViaSCP                     method    sssss      -              -
-.AddRemoteServerPublicKey           method    sss        -              -
-.RevokeRemoteServerPublicKey        method    s          -              -
-.SelfPublicKey                      property  s          -              emits-change writable
-.FileName                           property  s          -              emits-change writable
-.Target                             property  s          -              emits-change writable
-.TransferStatus                     property  s          -              emits-change writable
-xyz.openbmc_project.Common.TFTP     interface -          -              -
-.DownloadViaTFTP                    method    ss         -             
-
+xyz.openbmc_project.Common.SCP      interface -          -                                        -
+.AddRemoteServerPublicKey           method    ss         -                                        -
+.DownloadViaSCP                     method    ssss       -                                        -
+.GenerateSelfKeyPair                method    -          s                                        -
+.RevokeAllRemoteServerPublicKeys    method    s          -                                        -
+.FileName                           property  s          ""                                       emits-change writable
+.Target                             property  s          ""                                       emits-change writable
+.TransferStatus                     property  s          "xyz.openbmc_project.Common.SCP.Statu... emits-change writable
+xyz.openbmc_project.Common.TFTP     interface -          -                                        -
+.DownloadViaTFTP                    method    ss         -                                        -
+```
 ##### AddRemoteServerPublicKey
 The AddRemoteServerPublicKey method will be used for adding servers' public keys to the known hosts list which
-is stored in ~/.ssh/known_host.
+is stored in ~/.ssh/known_host. Receives ServerAddress and PublicKeyStr ("<type> <key>").
 
 ##### RevokeRemoteServerPublicKey
 The RevokeRemoteServerPublicKey method will be used for removing all the public keys related to a given remote server
-from the known hosts list which is stored in ~/.ssh/known_host.
+from the known hosts list which is stored in ~/.ssh/known_host. Receives ServerAddress.
+
+##### GenerateSelfKeyPair
+The GenerateSelfKeyPair method will be used for generating BMC's SSH key pair for key-based authentication.
+In case the key already exists:
+```
+dropbearkey -y -f ~/.ssh/id_dropbear
+```
+In case it does not exist, it will be generated using the following:
+```
+dropbearkey -t ed25519 -f ~/.ssh/id_dropbear
+```
 
 ##### DownloadViaSCP
 The method will start an on-demand service, which will run a shell script to perform the SCP and to update
@@ -415,17 +361,6 @@ is required to:
 1. Modify the remote server's authorized_keys file with the BMC root's public key.
 2. Provide the remote server public key, which will be added to the BMC's known_host file.
 Only one transfer is allowed at a time.
-
-##### SelfPublicKey property
-The SelfPublicKey property will present the BMC's public key. 
-In case the key already exists:
-```
-dropbearkey -y -f ~/.ssh/id_dropbear
-```
-In case it does not exist, it will be generated using the following:
-```
-dropbearkey -t ed25519 -f ~/.ssh/id_dropbear
-```
 
 ##### Status properties
 The status properties; FileName, Target and TransferStatus, will be updated by the on-demand service when the
