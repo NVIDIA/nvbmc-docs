@@ -6,7 +6,7 @@ Created: September 7, 2023
 
 ## Problem Description
 The objective of this OEM features is to enable user to manage dpu over redfish.
-Examples: such as enable/disable host rshim, enable/disable external host privileges, DPU OS state, Smart NIC mode
+Examples: such as enable/disable host rshim, enable/disable external host privileges, Smart NIC mode
 
 ## Background and References
 Using Ncsi over mctp over smbus read, enbale or disable NIC features
@@ -92,37 +92,83 @@ The general flow is described in the following sequence diagram:
            │                                                            │
            └────────────────────────────────────────────────────────────┘
 ```
+### Add OEM features to separate page
+Overusing ifdef makes code harder to read, maintain, debug and colloborate.
+To avoid having each platform adding its own ifdef on standard schemas, a single link will be added to standard schemas under Oem, Nvidia.
+Example: "@odata.id":"/redfish/v1/Systems/<platform-id>/Oem/Nvidia".
+Each platform should implement it oem schema page if needed on a separate file.
 
 ### Reading Oem DPU properties
-A new OEM properties will be added to the Systems schema under Bluefield/Oem/Nvidia:
+A new OEM link will be added to the Systems schema under Bluefield/Oem/Nvidia:
 ```
 https://<bmc_ip>/redfish/v1/Systems/Bluefield
 {
   ....
   "Oem": {
     "Nvidia": {
-      "Connectx": {
-        "ExternalHostPrivilege": {
-          "@odata.id": "/redfish/v1/Systems/Bluefield/Oem/Nvidia/Connectx/ExternalHostPrivileges"
-        },
-        "StrapOptions": {
-          "@odata.id": "/redfish/v1/Systems/Bluefield/Oem/Nvidia/Connectx/StrapOptions"
-        }
-      },
-      "HostRshim": "Disabled",
-      "Mode": "NicMode",
-      "OsState": "OsStarting"
+      "@odata.id": "/redfish/v1/Systems/Bluefield/Oem/Nvidia"
     }
+  },
+
   },
   ...
 }
 ```
 curl -k -H "X-Auth-Token: <token>" -X GET https://$bmc/redfish/v1/Systems/Bluefield
 
+### Reading Oem Nvidia DPU properties
+
+https://<bmc_ip>/redfish/v1/Systems/Bluefield/Oem/Nvidia
+```
+{
+  "Actions": {
+    "#HostRshim.Set": {
+      "Parameters": [
+        {
+          "AllowableValues": [
+            "Disabled",
+            "Enabled"
+          ],
+          "DataType": "String",
+          "Name": "HostRshim",
+          "Required": true
+        }
+      ],
+      "target": "/redfish/v1/Systems/Bluefield/Oem/Nvidia/Actions/HostRshim.Set"
+    },
+    "#Mode.Set": {
+      "Parameters": [
+        {
+          "AllowableValues": [
+            "NicMode",
+            "DpuMode"
+          ],
+          "DataType": "String",
+          "Name": "Mode",
+          "Required": true
+        }
+      ],
+      "target": "/redfish/v1/Systems/Bluefield/Oem/Nvidia/Actions/Mode.Set"
+    }
+  },
+  "Connectx": {
+    "ExternalHostPrivilege": {
+      "@odata.id": "/redfish/v1/Systems/Bluefield/Oem/Nvidia/Connectx/ExternalHostPrivileges"
+    },
+    "StrapOptions": {
+      "@odata.id": "/redfish/v1/Systems/Bluefield/Oem/Nvidia/Connectx/StrapOptions"
+    }
+  },
+  "HostRshim": "Enabled",
+  "Mode": "DpuMode"
+}
+```
+curl -k -H "X-Auth-Token: <token>" -X GET https://$bmc/redfish/v1/Systems/Bluefield/Nvidia/Oem
+
 ### Actions Set DpuMode and HostRshim
 A new OEM Actions will be added to the Systems schema under Bluefield/Actions/Oem/:
 ```
-https://<bmc_ip>/redfish/v1/Systems/Bluefield
+https://<bmc_ip>/redfish/v1/Systems/Bluefield/Oem/Nvidia
 {
   ...
   "Actions": {
@@ -183,9 +229,10 @@ Set Nic Mode
 curl -k -H "X-Auth-Token:<token>" -H "Content-Type: application/json" -X POST -d
 '{"Mode":NicMode"}'
 https://$bmc/redfish/v1/Systems/Bluefield/Oem/Nvidia/Actions/Mode.Set
+
 ### Reading Strap options
-```
 https://<bmc_ip>/redfish/v1/Systems/Bluefield/Oem/Nvidia/Connectx/StrapOptions
+```
 {
   "Mask": {
     "2PcoreActive": "Enabled",
@@ -218,8 +265,9 @@ https://<bmc_ip>/redfish/v1/Systems/Bluefield/Oem/Nvidia/Connectx/StrapOptions
 curl -k -H "X-Auth-Token: <token>"  -X GET https://${bmc}/redfish/v1/Systems/Bluefield/Oem/Nvidia/Connectx/StrapOptions
 
 ### Reading External Host privileges
-```
+
 https://<bmc_ip>/redfish/v1/Systems/Bluefield/Oem/Nvidia/Connectx/ExternalHostPrivileges
+```
 {
   "Actions": {
     "#ExternalHostPrivilege.Set": {
