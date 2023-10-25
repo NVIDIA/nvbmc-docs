@@ -896,7 +896,33 @@ to send mctp vmd message.
 The utility will follow the syntax of pldmtool hosted at
 https://gitlab-master.nvidia.com/dgx/bmc/pldm/-/tree/develop/pldmtool
 
-#### nsmtool usage
+#### nsmtool
+
+nsmtool is a client tool that acts as a NSM requester which runs on the BMC.
+nsmtool sends the request message and displays the response message and also
+provides flexibility to parse the response message & display it in readable
+format.
+
+nsmtool supports the subcommands for NSM types such as discovery [Type 0], 
+telemetry [Type 1, 2, & 3], diag [Type 4], and config [Type 5].
+
+- Source files are implemented in C++.
+- Consumes nsm/libnsm encode and decode functions.
+- Communicates with nsmd daemon running on BMC.
+- Enables writing functional test cases for NSM stack.
+
+Please refer the NSM specifications with respect to the nsm types.
+https://nvidia.sharepoint.com/:w:/r/sites/MCTPSystemManagementAPI/Shared%20Documents/Specifications%20(working%20copy)/System%20Management%20API%20Base%20Specification.docx?d=w9b1d3c7a195848dd91d1742808256f77&csf=1&web=1&e=LQRwYQ
+
+If NSM commands are not yet supported in the nsmtool repository user can
+directly send the request message with the help of **nsmtool raw -d <data>** option.
+
+
+## Usage
+
+User can see the nsmtool supported NSM types in the usage output available
+with the **-h** help option as shown below:
+
 ```
 nsmtool -h
 NSM requester tool for OpenBMC
@@ -907,44 +933,139 @@ Options:
 
 Subcommands:
   raw                         Send a raw request and print response
-  discovery                   Device Capability Discovery type command
-  network                     Network ports type command
-  telemetry                    Platform telemetry type command
+  discovery                   Device capability discovery type command
+  telemetry                   Network, PCI link and platform telemetry type command
   diag                        Diagnostics type command
-  config                      Device Configuration type command
+  config                      Device configuration type command
 
-$ nsmtool raw -h
-send a raw request and print response
-Usage: nsmtool raw [OPTIONS]
+```
+nsmtool command prompt expects a NSM type to display the list of supported
+commands that are already implemented for that particular NSM type.
 
-Options:
-  -h,--help                   Print this help message and exit
-  -m,--mctp_eid UINT          MCTP endpoint ID
-  -v,--verbose
-  -d,--data UINT              REQUIRED raw data
+```
+Command format: nsmtool <nsmType> -h
+```
+Example:
 
+```
 $ nsmtool telemetry -h
-
-base type command
-Usage: pldmtool telemetry [OPTIONS] SUBCOMMAND
+telemetry type command: Network, PCI link and platform telemetry type command
+Usage: nsmtool telemetry [OPTIONS] SUBCOMMAND
 
 Options:
   -h,--help                   Print this help message and exit
 
 Subcommands:
-  getTemperature              get temperature from a given source in degrees Celsius
+   GetTemperature              get temperature from a given source in degrees Celsius
+   GetAggregateTemp            get aggregate temperature from multiple sensors
+   GetPower                    get power reading from a given source in milliwatts
+   GetPowerLimits              get power limits from the devices
+   SetPowerLimits              set power limits for the devices
+   GetEDPpScalingFactor        get EDPp scaling factor in integer percentage
+   SetEDPpScalingFactor        set EDPp scaling factor as an integer percentage
+   GetInventoryInfo            get inventory information
+```
+More help on the command usage can be found by specifying the NSM type and the
+command name with **-h** argument as shown below.
 
-$ nsmtool telemetry getTemperature -h
-get the temperature sensor readings
+```
+Command format: nsmtool <nsmType> <commandName> -h
+```
+
+Example:
+```
+$ nsmtool telemetry GetTemperature -h
+GetTemperature command: Get temperature from a given source in degrees Celsius
 Usage: nsmtool platform getTemperature [OPTIONS]
 
 Options:
   -h,--help                   Print this help message and exit
   -m,--mctp_eid UINT          MCTP endpoint ID
   -v,--verbose
-  -s,--source   UINT REQUIRED
-                              source Values: { GPU = 0, Memory = 1, T.Limit = 2 }
+  -s,--source   UINT REQUIRED Source Values: { GPU = 0, Memory = 1, T.Limit = 2}
 ```
+
+## nsmtool raw command usage
+
+nsmtool raw command option accepts request message in the hexadecimal
+bytes and send the response message in hexadecimal bytes.
+
+```
+$ nsmtool raw -h
+raw type command: Send a raw request and print response
+Usage: nsmtool raw [OPTIONS]
+
+Options:
+  -h,--help                   Print this help message and exit
+  -m,--mctp_eid UINT          MCTP endpoint ID
+  -v,--verbose
+  -d,--data     UINT REQUIRED Raw data
+```
+
+**nsmtool request message format:**
+
+```
+nsmtool raw --data 0x30 <nsmType> <cmdType> <payloadReq>
+
+payloadReq - stream of bytes constructed based on the request message format
+             defined for the command type as per the spec.
+```
+
+**nsmtool response message format:**
+
+```
+<instanceId> <hdrVersion> <nsmType> <cmdType> <completionCode> <payloadResp>
+
+payloadResp - stream of bytes displayed based on the response message format
+              defined for the command type as per the spec.
+```
+
+#### NSMTool commands and sub commands
+List of NSMTool commands and subcommands, along with ones which are targeted to be supported.
+| NSMTool Command 	| NSM Type          	| NSM Subcommands        	| Detail             | To be supported    |
+|--------------------|--------------------|--------------------------|--------------------|--------------------|
+| discovery         	| Type 0           	|     	| Device capability discovery type command |   |
+|              	|      	| Ping     	| get the status of responder if alive or not | Yes |
+|              	|     	| GetMessageTypes      	| get supported nvidia message types by the device | Yes|
+|               	|        | GetCommandCodes  	| get supported command codes by the device | Yes |
+|               	|        | GetEventSources     	| get event sources under message type |  |
+|              	|      	| SetCurrentEventSources     	| enable/disable generation of event sources for event sources |  |
+|              	|     	| GetCurrentEventSources      	| get currently active event sources |  |
+|              	|      	| SetEventSubscription     	| set event subscription |  |
+|              	|     	| GetEventSubscription      	| get event subscription |  |
+|              	|     	| GetEventLogRecord      	| get event log record |  |
+|              	|      	| QueryDeviceIdentification     	| query compliant devices for self-identification information |  |
+|              	|     	| ConfigureEventAck      	| set events which require acknowledgement upon delivery |  |
+| telemetry         	| Type 1, 2, and 3        	|     	| Network, PCI link and platform telemetry type command |   |
+|              	|      	| GetTemperature     	| get temperature from a given source in degrees Celsius | Yes |
+|              	|     	| GetAggregateTemp      	| get aggregate temperature from multiple sensors | Yes |
+|               	|        | GetPower  	| get power reading from a given source in milliwatts |  |
+|               	|        | GetPowerLimits     	| get power limits from the devices |  |
+|              	|      	| SetPowerLimits     	| set power limits for the devices |  |
+|              	|     	| GetEDPpScalingFactor      	| get EDPp scaling factor in integer percentage | |
+|              	|      	| SetEDPpScalingFactor     	| set EDPp scaling factor as an integer percentage |  |
+|              	|     	| GetInventoryInfo      	| get inventory information | |
+|              	|     	| GetOEMInformation      	| get OEM information | |
+|              	|     	| GetCurrentClockFrequency      	| get current clock frequency | |
+|              	|     	| SetClockLimit      	| set clock limit | |
+|              	|     	| GetClockLimit      	| get clock limit | |
+|              	|     	| GetViolationDuration      	| get violation event duration | |
+|              	|     	| GetFanCount      	| get fan count on present board | |
+|              	|     	| GetFanProperties      	| get particular fan's properties | |
+|              	|     	| GetCurrentFanCurvePoints      	| get current fan's curve points | |
+|              	|     	| GetDefaultFanCurvePoints      	| get default fan curve points| |
+|              	|     	| SetFanCurvePoints      	| set fan curve points| |
+|              	|     	| GetECCMode      	| get ECC mode | |
+|              	|     	| SetECCMode      	| set ECC mode | |
+|              	|     	| GetVoltage      	| get voltage of particular sensor | |
+|              	|     	| SetThermalParameter      	| set thermal parameter data for sensor | |
+|              	|     	| GetThermalParameters      	| get thermal parameter data for sensor | |
+| diag         	| Type 4        	|     	| Diagnostics type command |   |
+|              	|     	| to be added      	| to be added | |
+| config         	| Type 5        	|     	| Device configuration type command |   |
+|              	|     	| to be added      	| to be added | |
+| raw            	| Any type command  	|       	| Send a raw request and print response | Yes |
+
 
 ### Event logging
 NSM event support polling and pushing event. By default, nsmd would enable NSM
