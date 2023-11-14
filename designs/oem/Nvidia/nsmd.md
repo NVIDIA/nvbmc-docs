@@ -1,5 +1,5 @@
+# Table Of Content
 <!-- TOC start (generated with https://github.com/derlin/bitdowntoc) -->
-
 - [nsmd - Nvidia System Management Daemon](#nsmd-nvidia-system-management-daemon)
    * [Problem Description](#problem-description)
    * [Background and References](#background-and-references)
@@ -8,33 +8,32 @@
       + [Device Inventory](#device-inventory)
       + [Sensor refresh rate](#sensor-refresh-rate)
          - [Estimated Vulcan-next Sensor#](#estimated-vulcan-next-sensor)
-         - [Refresh rate calculation](#refresh-rate-calculation)
-         - [Estimation](#estimation)
+         - [Estimation calculation](#estimation-calculation)
    * [Proposed Design](#proposed-design)
       + [Discovering NSM endpoint](#discovering-nsm-endpoint)
       + [Collecting FRU device](#collecting-fru-device)
-         - [Table 1 - NSM PropertyID to FruDevice PropertyName](#table-1)
-         - [Example 1 - CX7 FruDevice D-Bus object](#example-1)
+         - [Table 1](#table-1)
+         - [Example 1](#example-1)
       + [Creating Device Inventory](#creating-device-inventory)
-         - [Example 2 - An EM JSON file for CX7](#example-2)
-         - [Example 3 - An EM JSON file for QM3](#example-3)
-         - [Example 4 - An example result of QM3 device inventory busctl dump](#example-4)
+      + [usage of EM configuration for nsmd](#usage-of-em-configuration-for-nsmd)
+         - [NSM_Sensor](#nsm_sensor)
+         - [NSM_NVLink](#nsm_nvlink)
+         - [Example 2](#example-2)
+         - [Example 3](#example-3)
+         - [Example 4](#example-4)
       + [Processing Configuration Data](#processing-configuration-data)
-         - [Table 2 - Command/sensor path mapping](#table-2)
+         - [Table 2](#table-2)
          - [revisited xyz.openbmc_project.item.Port PDI](#revisited-xyzopenbmc_projectitemport-pdi)
          - [new defined xyz.openbmc_project.state.PortMetrics PDI](#new-defined-xyzopenbmc_projectstateportmetrics-pdi)
-         - [Example 5 - The temp sensor PDI created by nsmd for QM3](#example-5)
+         - [Example 5](#example-5)
       + [Associating NSM_Sensor to Device Inventory](#associating-nsm_sensor-to-device-inventory)
       + [Associating NSM_NVLink to Device Inventory](#associating-nsm_nvlink-to-device-inventory)
       + [Associating PLDM T2 sensors to Device Inventory](#associating-pldm-t2-sensors-to-device-inventory)
-         - [Table 3 - Entity type to Inventory PDI](#table-3)
+         - [Table 3](#table-3)
+         - [Example 6](#example-6)
       + [Polling sensor](#polling-sensor)
          - [sensor polling Example 1](#sensor-polling-example-1)
          - [sensor polling Example 2](#sensor-polling-example-2)
-      + [Improving sensor polling performance by aggregate command](#improving-sensor-polling-performance-by-aggregate-command)
-         - [paring response](#paring-response)
-            * [example: sensor table](#example-sensor-table)
-         - [example: aggregate response](#example-aggregate-response)
       + [error handling](#error-handling)
       + [nsmd endpoint discovery and sensor polling Sequence Diagram](#nsmd-endpoint-discovery-and-sensor-polling-sequence-diagram)
       + [NSM Endpoint mockup responder](#nsm-endpoint-mockup-responder)
@@ -42,32 +41,40 @@
          - [mockup EID json file](#mockup-eid-json-file)
          - [mockup NSM commands](#mockup-nsm-commands)
       + [NSM Utility](#nsm-utility)
-         - [nsmtool usage](#nsmtool-usage)
-      + [Event logging](#event-logging)
-         - [example: event id configuration in EM json](#example-event-id-configuration-in-em-json)
-         - [nsmd event initialization](#nsmd-event-initialization)
-         - [nsmd event Sequence Diagram](#nsmd-event-sequence-diagram)
+         - [nsmtool](#nsmtool)
+            * [Usage](#usage)
+            * [nsmtool raw command usage](#nsmtool-raw-command-usage)
+         - [NSMTool commands and sub commands](#nsmtool-commands-and-sub-commands)
       + [End to End data path of OpenBMC service block diagram](#end-to-end-data-path-of-openbmc-service-block-diagram)
    * [Alternatives Considered](#alternatives-considered)
    * [Impacts](#impacts)
    * [Testing](#testing)
    * [Backup](#backup)
       + [PLDM T2 round trip time measurement](#pldm-t2-round-trip-time-measurement)
+      + [(WIP) Improving sensor polling performance by aggregate command](#wip-improving-sensor-polling-performance-by-aggregate-command)
+         - [processing aggregate response](#processing-aggregate-response)
+            * [example: sensor table](#example-sensor-table)
+         - [example: aggregate response](#example-aggregate-response)
+      + [(WIP) Event logging](#wip-event-logging)
+         - [example: event id configuration in EM json](#example-event-id-configuration-in-em-json)
+         - [nsmd event initialization](#nsmd-event-initialization)
+         - [nsmd event Sequence Diagram](#nsmd-event-sequence-diagram)
 
 <!-- TOC end -->
-
 <!-- TOC --><a name="nsmd-nvidia-system-management-daemon"></a>
 
 # nsmd - Nvidia System Management Daemon
 
 Author:
   Gilbert Chen
+  Utkarsh Yadav
 
 Primary assignee:
   Gilbert Chen
 
 Other contributors:
-  < Name and/or Discord nic or None >
+  Deepak Kodihalli
+  Shakeeb Pasha
 
 Created:
   June 26, 2023
@@ -106,12 +113,19 @@ telemetry data to D-Bus for bmcweb.
 
 [9]: https://gitlab-master.nvidia.com/dgx/bmc/openbmc/-/blob/develop/meta-nvidia/recipes-nvidia/gpuoob/files/hgx/oob_manifest_pcie_vulcan.json
 
+[10]: https://www.dmtf.org/sites/default/files/standards/documents/DSP0249_1.1.0.pdf
+
+[11]: https://gitlab-master.nvidia.com/dgx/bmc/phosphor-dbus-interfaces/-/tree/develop/yaml/xyz/openbmc_project/Inventory/Item?ref_type=heads
+
+[12]: https://nvidia.sharepoint.com/:w:/r/sites/MCTPSystemManagementAPI/_layouts/15/Doc.aspx?sourcedoc=%7B9B1D3C7A-1958-48DD-91D1-742808256F77%7D&file=System%20Management%20API%20Base%20Specification.docx&action=default&mobileredirect=true&DefaultItemOpen=1
+
 ## Requirements
 
 ### Device Inventory
 The NSM sensors need to be associated with inventory item and it is mandatory
 for Redfish. The nsmd should associate thermal/port telemetry to the right
-entity defined in PLDM entity association PDRs.
+device inventory. The device inventory for GB100 will be handled by GpuMgr and
+QM3 and CX7 will be handled by EntityManager.
 
 ### Sensor refresh rate
 * The Freshness target is <= 500ms from NSM Endpoint to D-Bus
@@ -131,20 +145,19 @@ entity defined in PLDM entity association PDRs.
 | total         	| 47                            	| 28      	| 8      	| 975                                     	| 1057  	|               	|
 | **PID total** 	| 47                            	| 28      	| 8      	| 0                                       	|       	| **83**        	|
 
-* FPGA and Baseboard does not support NSM API but still include here for worst case estimation.
-
-#### Refresh rate calculation
-* **t1** is the period of nsmd refresh loop
-* **t2** is TAT of a NSM command
-
-#### Estimation
+#### Estimation calculation
+If the requirement of end to end sensor age is 1 second, then
 * set t1 = 250ms, reserve 250ms for D-Bus call and other cost
 * set t2 = [3.5 ms](#pldm-t2-round-trip-time-measurement)
 * max sensor# = t1 / t2
 
+[note]
+* t1 is the period of nsmd refresh loop
+* t2 is TAT of a NSM command
+
 1. When t1=250ms, t2=3.5ms then the max sensor# nsmd can handle by one big loop
    is 250/3.5 = 71. The total sensor#(1057) is greater than the 71, So polling
-   sensor for each instance parallelly is needed.
+   sensor for each instance(QM3, GB100 and CX7) in different loop is needed.
 
 2. When t1=250ms, t2=3.5ms, the QM3 sensor# is 251. It is greater than to 71, So
    priority pid sensor polling is needed.
@@ -177,11 +190,16 @@ parsing NSM command defined in [1] conveniently, a libnsm will be developed.
 
 1. When nsmd start, nsmd get EID list from mctp-ctrl daemon to discovery EID
    list which supports NSM API.
-2. nsmd gets the platform inventory by GetInventoryInformation command and then
-   exposes QM3/CX7 FRU data to D-Bus by FruDevice PDI.
+2. nsmd gets the platform inventory by Type0 QueryDeviceIdentification command
+   for mandatory Inventory Device Type and Device Instance property. If the
+   device supports GetInventoryInformation command, nsmd also try to get other
+   Inventory properties(e.g. Part#). And then exposes QM3/CX7 collected FRU
+   data to D-Bus by FruDevice PDI. The GB100 FRU Data is populated by GpuMgr
+   as before(Vulcan).
 3. Entity-Manager gets notification for new FruDevice PDI added and then probing
-   the json config file to creates GB100/QM3/CX7 device inventory and
-   Configuration data defined in "expose" section in json file.
+   the json config file to populate QM3/CX7 device inventory and Configuration
+   PDI defined in "expose" section to D-Bus. The Device Inventory and
+   configuration PDI of GB100 are populated by GpuMgr.
 4. nsmd gets notification for GB100/QM3/CX7 device inventory added and then process
    the Configuration data to create sensor instance.
 5. nsmd starts sd_event timer to poll sensors regularly to keep sensor reading
@@ -195,25 +213,32 @@ mctpEndpointAddedSignal on the same path for new MCTP endpoint is added.
 
 When nsmd get new EID/UUID pair list, nsmd should check which EID is a NSM
 endpoint by the steps below.
-1. Check if 0x7F(PCI VDM) is in SupportedMessageTypes array of
+1. Check if 0x7E(VDM-PCI) is in SupportedMessageTypes array of
    xyz.openbmc_project.MCTP.Endpoint PDI of the MCTP Endpoint
-2. Send ping(msgType=0, cmd=0) to the EID.
+2. Send MCTP Control command, Get Vendor Defined Message Support Message(0x6)
+   to the EID to get all support Vendor ID Sets.
    * If get error, skip the EID and goto 1 to check the next EID in list
-3. Send GetSupportedMessageTypes(msgType=0x0, cmd=0x01) and keep the returned
+   * nsmd checks if there is NVIDIA VID(0x10DE) in returned Vendor ID Sets.
+3. Send NSM GetSupportedMessageTypes(msgType=0x0, cmd=0x01) and keep the returned
    NSM message type supported by the NSM endpoint.
-   * If get error, skip the EID and goto 1 to check the next EID in list
+   * If get error, log message to journal log, skip the EID and goto 1 to check
+     the next EID in list
 4. Send GetSupportedCommandCodes(msgType=0x0, cmd=0x02) and keep returned
    supported command list.
-5. Check if the NSM endpoint support mandatory commands
+5. Check if the NSM endpoint support mandatory commands or skip the EID and
+   goto step 1 to check next EID in list.
    * Platform Environment(msg type=0x3)
    * GetInventoryInformation(msgType=0x3, cmd=0x04)
    * QueryDeviceIdentification(msg type=0x0, cmd=0x7)
 6. Add the EID/UUID pair in NSM endpoint list and keep the supported message types
-   and commands received in 3 and 4 to the NSM endpoint.
+   and commands received in 3 and 4 to the NSM endpoint. The EID/UUID table will
+   be used for sensor manager to find which EID should the NSM command be sent to.
 
 ### Collecting FRU device
 When new NSM endpoint is added in discovered, should expose the NSM endpoint's
 FRU data to D-Bus by the steps below.
+For the Device Type that its Device Inventory is not managed by Entity Manager,
+the device type should be specified in "fru_ignore" list via CLI parameter.
 
 1.  Send QueryDeviceIdentification command to EID and wait for response.
 2.  Parse response to get Device Type Identifier and InstanceNumber
@@ -222,14 +247,15 @@ FRU data to D-Bus by the steps below.
     * 0x1 - NVSwitch
     * 0x2 - PCIeBridge
     * 0x3 - FPGA
-4.  Create FruDevice PDI at /xyz/openbmc_project/FruDevice/{DeviceType}_{InstanceNumber}
+4.  Check if the Device Type is not in fru_ignore list.
+5.  Create FruDevice PDI at /xyz/openbmc_project/FruDevice/{DeviceType}_{InstanceNumber}
     like the [example1](#example-1)
-5.  Exposes Device Type Identifier to "DeviceType" property of FruDevice PDI
-6.  Exposes Instance Number to "InstanceName" property of FruDevice PDI
-7.  Exposes UUID to "UUID" property of FruDevicePDI
-8.  Send GetInventoryInformation command to EID and wait for response.
-9.  Parse response to get FRU data.
-10. Expose FRU data to corresponding property name of FruDevice as [table1](#table-1)
+6.  Exposes Device Type Identifier to "DeviceType" property of FruDevice PDI
+7.  Exposes Instance Number to "InstanceName" property of FruDevice PDI
+8.  Exposes UUID to "UUID" property of FruDevicePDI
+9.  Send GetInventoryInformation command to EID and wait for response.
+10. Parse response to get FRU data.
+11. Expose FRU data to corresponding property name of FruDevice as [table1](#table-1)
 
 #### Table 1
 NSM PropertyID to FruDevice PropertyName
@@ -267,6 +293,39 @@ For the case that Device Inventory which is not created by EntityManger, the
 service(e.g. GpuMgr) who creates the device Inventory should expose the
 necessary configuration like EntityManager does for nsmd parsing.
 
+For the device supporting NSM protocol, there should be an inventory PDI
+created according to its device type retrieved by GetQueryDeviceInformation
+command.
+
+### NSM Device Inventory
+| Device                   |  Inventory PDI                                      |
+|------------------------  |--------------------------------------------------	|
+| GB100 (deviceType=0)     | xyz.openbmc_project.inventory.item.Accelerator      |
+| QM3 (deviceType=1)       | xyz.openbmc_project.Inventory.Item.Switch           |
+| CX7 (deviceType=2)       | xyz.openbmc_project.Inventory.Item.NetworkInterface |
+| FGPA (deviceType=3)      | xyz.openbmc_project.inventory.item.Accelerator    	|
+
+### NSM configuration PDIs
+#### NSM_Temp
+| Configuration Property 	| type   	| Description                                          	            |
+|------------------------	|--------	|-----------------------------------------------------------------	|
+| Type                   	| string 	| NSM_Temp                                           	               |
+| Name                   	| string 	| Sensor Name                                          	            |
+| Association            	| string 	| The D-Bus object path the state.PortMetric PDI should be populated.|
+| SensorId                	| int    	| sensor ID                                                          |
+| UUID                   	| string 	| The UUID of device. used for lookup the assigned EID 	            |
+| Priority                	| bool    	| Indicate the sensor updated in priority                            |
+
+#### NSM_NVLink
+| Configuration Property 	| type   	| Description                                                              |
+|------------------------	|--------	|-------------------------------------------------------------------------	|
+| Type                   	| string 	| NSM_NVLink                                                               |
+| Name                   	| string 	| Prefix of Port Name (e.g, Port_{INDEX})                                  |
+| Association            	| string 	| The D-Bus object path the state.PortMetric PDI should be populated.      |
+| Count                  	| int    	| The total port number of the device.<br>example: if Count=4 and Name="Port", then four state.PortMetric PDIs will be populated to<br>/xyz/openbmc_project/.../Ports/Port_0<br>/xyz/openbmc_project/.../Ports/Port_1<br>/xyz/openbmc_project/.../Ports/Port_2<br>/xyz/openbmc_project/.../Ports/Port_3 	|
+| UUID                   	| string 	| The UUID of device. used for lookup the assigned EID                     |
+| Priority                	| bool    	| Indicate the sensor updated in priority                            |
+
 #### Example 2
 An EM JSON file for CX7
 ```
@@ -298,7 +357,7 @@ An EM JSON file for CX7
       "xyz.openbmc_project.Common.UUID": {
          "UUID": $UUID
       },
-      "xyz.openbmc_project.Inventory.Item.PCIeDevice": {},
+      "xyz.openbmc_project.Inventory.Item.NetworkInterface": {},
       "xyz.openbmc_project.Inventory.Decorator.Instance": {
             "InstanceNumber": $INSTANCE_NUMBER
       }
@@ -316,8 +375,7 @@ An EM JSON file for QM3
             "Type": "NSM_Sensor",
             "Association": "/xyz/openbmc_project/inventory/system/board/QM3_0",
             "UUID": $UUID,
-            "Command": "GetTemperature",
-            "Arg0": 0,
+            "SensorId": 0,
             "Threshold": [
                {
                   "Direction": "greater than",
@@ -345,15 +403,6 @@ An EM JSON file for QM3
             "Association": "/xyz/openbmc_project/inventory/system/board/QM3_0/Ports",
             "UUID": $UUID,
             "Count": 18
-         },
-         {
-            "Name": "PriorityCommands",
-            "Type": "NSM_PriorityCommand",
-            "Command": [
-               "getTemperature",
-               "getPower",
-               "
-            ]
          }
       ],
       "Probe": "xyz.openbmc_project.FruDevice({'DEVICE_TYPE': 'QM3','INSTANCE_NUMBER': 1})",
@@ -459,8 +508,7 @@ org.freedesktop.DBus.Properties                          interface -         -  
 xyz.openbmc_project.Configuration.NSM_Sensor             interface -         -                    -
 .Association                                             property  s         "/xyz/openbmc_proj...emits-change
 .UUID                                                    property  s         "871d3c78-eb66-2a5...emits-change
-.Arg0                                                    property  t         0                    emits-change
-.Command                                                 property  s         "GetTemperature"     emits-change
+.SensorId                                                property  t         0                    emits-change
 .Name                                                    property  s         "QM3_0_Temp_0"       emits-change
 .Type                                                    property  s         "NSM_Sensor"         emits-change
 xyz.openbmc_project.Configuration.NSM_Sensor.Thresholds0 interface -         -                    -
@@ -488,18 +536,23 @@ The nsmd monitor D-Bus signal to get notification when EntityManager/GpuMgr
 create device inventory. When signal is received, nsmd gets the
 GB100/QM3/CX7/FGPA configuration data by the steps below.
 
+[note] The phosphor-dbus-interface repo should have the yaml files to define
+NSM Configuration PDIs(e.g. NSM_Sensor and NSM_NVLink)
+
 1. Calls xyz.openbmc_project.ObjectMapper GetObject method for all device
-   inventory D-Bus path with PDIs below.
-   * xyz.openbmc_project.inventory.item.AddInCard
-   * xyz.openbmc_project.inventory.item.Chassis
-   * xyz.openbmc_project.inventory.item.Board
-2. Calls xyz.openbmc_project.ObjectMapper GetSubTree method to get all D-Bus
-   path which is under device inventory path got in step1 and with PDIs below.
+   inventory D-Bus path with PDIs below to get the all GB100/QM3/CX7 device
+   inventory paths. They can be populated by GpuMgr or EntityManager service.
+   * xyz.openbmc_project.inventory.item.Accelerator
+   * xyz.openbmc_project.Inventory.Item.Switch
+   * xyz.openbmc_project.inventory.item.NetworkInterface
+
+2. Calls xyz.openbmc_project.ObjectMapper GetSubTree method to get interesting
+   configuration PDIs which is under the device inventory path found in step1.
    * xyz.openbmc_project.Configuration.NSM_NVLink
-   * xyz.openbmc_project.Configuration.NSM_Sensor
+   * xyz.openbmc_project.Configuration.NSM_Temp
 
 3. Create sensor according to Configuration PDI fetched from EM or GpuMgr
-   1. NSM_Sensor:
+   1. Numeric Sensor:
       a. Expose xyz.openbmc_project.Sensor.Value PDI at the path defined at
          [table 2](#table-2) according to the "command" property of
          NSM_Sensor PDI got in step2. The [example 5](#example-5) shows the
@@ -508,25 +561,27 @@ GB100/QM3/CX7/FGPA configuration data by the steps below.
          endpoint property to {"chassis", "all_sensors", "{PARENT_CHASSIS}"}.
          The value PARENT_CHASSIS is from "Association" property of NSM_SENSOR
          configuration PDI.
-      c. Keeps UUID property of configuration PDI in sensor class member
-         variable
+      c. Look up the EID by the UUID property of configuration PDI and keep it
+         in sensor class member variable for sending NSM command to device when
+         updating sensor reading.
 
 #### Table 2
-Command/sensor path mapping
+Configuration PDI/sensor path mapping
 
-| Command property 	| D-Bus path                               	|
-|------------------	|------------------------------------------	|
-| getTemperature   	| /xyz/openbmc_project/sensors/Temperature 	|
-| getPower         	| /xyz/openbmc_project/sensors/Power      	|
-| ReadFanSpeed     	| /xyz/openbmc_project/sensors/RPMS        	|
+| PDI     	| Command           	| D-Bus path                               	|
+|-----------|------------------	|------------------------------------------	|
+| NSM_Temp  | getTemperature   	| /xyz/openbmc_project/sensors/Temperature 	|
+| NSM_Power | getPower         	| /xyz/openbmc_project/sensors/Power      	|
+| NSM_Fan   | ReadFanSpeed     	| /xyz/openbmc_project/sensors/RPMS        	|
 
    2. NSM_NVLink:
       a. Expose xyz.openbmc_project.Inventory.State.PortMetrics at the path
          defined in the "Association" property of NSM_NVLink configuration PDI
-      b. Keeps UUID property of configuration PDI in sensor class member
-         variable
-      c. item.port PDI will be revised to move out counter property to
+      b. item.port PDI will be revised to move out counter properties to
          state.PortMetric PDI
+      c. Look up the EID by the UUID property of configuration PDI and keep it
+         in sensor class member variable for sending NSM command to device when
+         updating the counter properties of PortMetrics PDI.
 
 #### revisited xyz.openbmc_project.item.Port PDI
 ```
@@ -611,10 +666,13 @@ xyz.openbmc_project.Time.EpochTime                interface -         -         
 
 ### Associating NSM_NVLink to Device Inventory
 1. bmcweb assumes the portMetrics PDI and item.port PDI are at the same D-Bus
-   object path.
-2. The object path of portMetrics PDI is from configuration.NVLink PDI.
-3. It is required that the configuration provider set Association property of
-   configuration.NVLink PDI to the same D-Bus object path as item.port PDI.
+   object path for gathering specific port properties defined in Port schema.
+2. The D-Bus object path of portMetrics PDI is from configuration.NVLink PDI.
+3. nsmd will populate the portMEtrics PDI at the D-Bus object path according to
+   Association property of configuration.NVLink PDI.
+4. It is required that the configuration provider(EntityManager or GpuMgr) set
+   Association property of configuration.NVLink PDI to the same D-Bus object path
+   as item.port PDI for the requirement in step1.
 
 ### Associating PLDM T2 sensors to Device Inventory
 QM3 and CX7 support both PLDM T2 and NSM protocols. The pldmd should associates
@@ -639,6 +697,23 @@ Entity type to Inventory PDI
 | Processor(135)          	| xyz.openbmc_project.Inventory.Item.Cpu             	|
 | Add In Card(68)         	| xyz.openbmc_project.Inventory.Item.Board           	|
 
+The mapping table above is default value and it can be overwritten by providing
+json file like [example](#Example-6)
+
+#### Example 6
+The json object array to config Entity Type and PDI mapping table
+```
+{
+   "InventoryToEntityType": [
+      {"xyz.openbmc_project.Inventory.Item.ProcessorModule": 81},
+      {"xyz.openbmc_project.Inventory.Item.Cpu": 135},
+      {"xyz.openbmc_project.Inventory.Item.Board": 68}
+   ]
+}
+```
+* The Entity type are defined in [DSP0249](10)
+* The Inventory PDI list can be found in [phosphor-dbus-interface](11)
+
 ### Polling sensor
 For polling sensor in background by single thread nsmd app, the nsmd start a
 timer expired every 250ms. When timer expired the nsmd send NSM command defined
@@ -659,7 +734,8 @@ To meet the sensor refresh requirement, nsmd category sensor into two types.
 
 #### sensor polling Example 1
 There is 20 sensors in a NSM endpoint.
-* Sensor S1~S5 are PID sensor(temp, power or energy) and updated by Priority polling
+* Sensor S1~S5 are PID sensor(temp, power or energy) and updated by Priority
+  polling.
 * Sensor S6~S20 are State sensor by Round-Robin polling
 * Polling S1~S5 are completed within a timer period(<250ms).
 
@@ -672,59 +748,18 @@ There is 20 sensors in a NSM endpoint.
 
 #### sensor polling Example 2
 There is 20 sensors in a NSM endpoint.
-* Sensor S1~S10 are PID sensor(temp, power or energy) and updated by Priority polling
-* Sensor S11~S20 are State sensor by Round-Robin polling
-* Polling S1~S10 cannot be completed within a timer period(>250ms).
+* Sensor S1~S10 are PID sensor(temp, power or energy) and updated by Priority
+  polling.
+* Sensor S11~S20 are State sensor by Round-Robin polling.
+* Priority polling spent more than 250ms to update Priority sensors so nsmd just
+  update one Round-Robin sensor in this iteration.
 
 |            	| Prio 	| Prio 	| Prio 	| Prio 	| Prio 	| Prio 	| Prio 	| Prio 	| Prio 	| Prio 	| RR  	|
 |------------	|------	|------	|------	|------	|------	|------	|------	|------	|------	|------	|-----	|
 | Iteration1 	| S1   	| S2   	| S3   	| S4   	| S5   	| S6   	| S7   	| S8   	| S9   	| S10  	| S11 	|
 | Iteration2 	| S1   	| S2   	| S3   	| S4   	| S5   	| S6   	| S7   	| S8   	| S9   	| S10  	| S12 	|
-| Iteration3 	| S1   	| S2   	| S3   	| S4   	| S5   	| S6   	| S7   	| S88  	| S9   	| S10  	| S13 	|
+| Iteration3 	| S1   	| S2   	| S3   	| S4   	| S5   	| S6   	| S7   	| S8  	| S9   	| S10  	| S13 	|
 | Iteration4 	| S1   	| S2   	| S3   	| S4   	| S5   	| S6   	| S7   	| S8   	| S9   	| S10  	| S14 	|
-
-### Improving sensor polling performance by aggregate command
-The NSM msg type3(platform telemetry) getTemperature(0x01), getPower(0x02)
-and readFanSpeed(0x07) support aggregate command to read all the sensor
-readings at once so aggregate command can update sensor readings quickly by
-reducing overhead and commands turn around time.
-By default, nsmd utilizes aggregate command by setting Arg1=0xff for
-getTemperature/getPower/readFanSpeed command and then parsing the response
-to update all sensor defined in EM json file.
-
-#### paring response
-1. nsmd maintains a table for the sensor defined in EM config file. The command
-   code and Arg0 in EM config file are used as index of the sensor table
-##### example: sensor table
-| Cmd            	| arg0 	| Name        	|
-|----------------	|------	|-------------	|
-| getTemperature 	| 0x01 	| GPU_0_Temp  	|
-| getTemperature 	| 0x02 	| Mem_0_Temp  	|
-| getPower       	| 0x01 	| GPU_0_Power 	|
-| getPower       	| 0x02 	| Mem_0_Power 	|
-
-2. nsmd sends aggregate command to fetch all sensor readings at once.
-3. nsmd checks the response reason code, completion code and gets response data
-   size
-4. nsmd parses the response to move pointer to first arg1 and its completion code
-   and reading value.
-5. nsmd use arg1 and cmd code in response as index to update reading value to
-   sensor table if completion code is successful.
-6. nsmd check if pointer within the response data size in step 3.
-7. nsmd move to pointer to next arg1 and its completion code and reading value
-8. jump to step 5
-
-#### example: aggregate response
-|                	| **byte1**             	| **byte2**                	| **byte3**                   	| **byte4**                   	|
-|----------------	|-----------------------	|--------------------------	|-----------------------------	|-----------------------------	|
-| **byte 1-4**   	| Reserved/HDR version  	| Destination EID          	| Source EID                  	| SOM/EOM/PKTseq#/TO/MsgEtag  	|
-| **byte 5-8**   	| IC/Message Type(0x7E) 	| PCI(0x10)                	| PCI(0xDE)                   	| RQ/D/RSVD/InstanceID        	|
-| **byte 9-12**  	| OCP type/OCP version  	| NVIDA message type(0x03) 	| Command Code(0x1/0x02/0x07) 	| reason code/completion code 	|
-| **byte 13-16** 	| data size MSB         	| data size LSB            	| 1 Arg1                      	| 1 Width/completion Code     	|
-| **byte 17-20** 	| 1 data MSB            	| 1 data LSB               	| 2 Arg1                      	| 2 Width/completion Code     	|
-| **byte 21-24** 	| 2 data LSB            	| 2 data LSB               	| 3 Arg1                      	| 3 Width/completion Code     	|
-| **byte 25-28** 	| 3 data LSB            	| 3 data LSB               	| N Arg1                      	| N Width/completion Code     	|
-| **byte 28-32** 	| N data LSB            	| N data LSB               	| zero padding                	| zero padding                	|
 
 ### error handling
 | NSM Completion Code         	| discovery phase                                                                                                                                                                    	| polling phase                                                                                                                                                                                                                                                                                                                                                                                  	|
@@ -743,80 +778,119 @@ to update all sensor defined in EM json file.
 
 ### nsmd endpoint discovery and sensor polling Sequence Diagram
 ```
-           ┌─────────┐             ┌────────────────┐        ┌────────────────┐  ┌───────────────────┐ ┌───────────┐ ┌──────────┐
-           │  nsmd   │             │ Entity-Manager │        │    Gpu-Mgr     │  │MCTP Control Daemon│ │MCTP Demux │ │NSM Device│
-           └────┬────┘             └───────┬────────┘        └───────┬────────┘  └────────┬──────────┘ └─────┬─────┘ └─────┬────┘
-                │                          │                         │                    │                  │             │
-                │                          │                         │                    │                  │             │
-                │ GetSubTree               │                         │                    │                  │             │
-                │ /xyz/openbmc_project/mctp│                         │                    │                  │             │
-               ┌┴┐xyz.openbmc_project.MCTP.Endpoint                  │                    │                  │             │
-  Get EID list │ ├─────────────────────────┬─────────────────────────┼────────────────────┤                  │             │
-               │ │                         │                         │                    │                  │             │
-               │ │                         │                         │                    │                  │             │
-               │ │   response              │                         │                    │                  │             │
-               │ │ ◄───────────────────────┼─────────────────────────┼────────────────────┤                  │             │
-               └┬┘                         │                         │                    │                  │             │
-                │                          │                         │                    │                  │             │
-               ┌┴┐GetSupportedMessageTypes │                         │                    │                  │             │
-  Discover NSM │ ├─────────────────────────┼─────────────────────────┼────────────────────┤                  │             │
-  Endpoint     │ │                         │                         │                    ├──────────────────┼────────────►│
-               │ │                         │                         │                    │                  │             │
-               │ │                         │                         │                    │                  │             │
-               │ │   response              │                         │                    │◄─────────────────┼─────────────┤
-               │ │ ◄───────────────────────┼─────────────────────────┼────────────────────┤                  │             │
-               └┬┘                         │                         │                    │                  │             │
-                │                          │                         │                    │                  │             │
-               ┌┴┐GetSupportedMessageTypes │                         │                    │                  │             │
-               │ ├─────────────────────────┼─────────────────────────┼────────────────────┤                  │             │
- GetFRU Data   │ │                         │                         │                    ├──────────────────┼────────────►│
- And Expose to │ │                         │                         │                    │                  │             │
- D-Bus         │ │                         │                         │                    │                  │             │
-               │ │   response              │                         │                    │◄─────────────────┼─────────────┤
-               │ │ ◄───────────────────────┼─────────────────────────┼────────────────────┤                  │             │
-               │ │                         │                         │                    │                  │             │
-               │ │                         │                         │                    │                  │             │
-               │ │                         │                         │                    │                  │             │
-               │ │                         │   ┌─────────────────┐   │                    │                  │             │
-               │ │ D-Bus signal notify     │   │Config json files│   │                    │                  │             │
-               │ │ New FruDevice created   │   └────────┬────────┘   │                    │                  │             │
-               └┬┴────────────────────────┬┴┐           │            │                    │                  │             │
-                │                         │ │           │            │                    │                  │             │
-                │          Probe json file│ │           │            │                    │                  │             │
-                │                         │ │           │            │                    │                  │             │
-                │                         │ │◄──────────┘            │                    │                  │             │
-                │                         └┬┘  matched file          │                    │                  │             │
-                │                          │                         │                    │                  │             │
-                │                         ┌┴┐                        │                    │                  │             │
-                │     Create inventory obj│ │                        │                    │                  │             │
-                │                         │ │                       ┌┴┐                   │                  │             │
-                │                         │ │                       │ │                   │                  │             │
-                │ ◄───────────────────────┴┬┘   Create inventory obj│ │                   │                  │             │
-                │  Send InterfaceAdd signal│                        │ │                   │                  │             │
-                │                          │                        │ │                   │                  │             │
-                │ ◄────────────────────────┼────────────────────────┴┬┘                   │                  │             │
-               ┌┴┐                         │ Send InterfaceAdd signal│                    │                  │             │
-               │ │                         │                         │                    │                  │             │
-  Create sensor│ │                         │                         │                    │                  │             │
-               │ │                         │                         │                    │                  │             │
-               └┬┘                         │                         │                    │                  │             │
-                │                          │                         │                    │                  │             │
-               ┌┴┐                         │                         │                    │                  │             │
-      Associate│ │                         │                         │                    │                  │             │
-      Sensor   │ │                         │                         │                    │                  │             │
-               │ │                         │                         │                    │                  │             │
-               └┬┘                         │                         │                    │                  │             │
-  ┌────────────►│                          │                         │                    │                  │             │
-  │            ┌┴┐ GetPortTelemetryCounter │                         │                    │                  │             │
-  │ Poll sensor│ ├─────────────────────────┼─────────────────────────┼────────────────────┼──────────────────┼────────────►│
-  │ State      │ │                         │                         │                    │                  │             │
-  │            │ │                         │                         │                    │                  │             │
-  │            │ │  response               │                         │                    │                  │             │
-  │            │ │◄────────────────────────┼─────────────────────────┼────────────────────┼──────────────────┼─────────────┤
-  │            └┬┘                         │                         │                    │                  │             │
-  │             │                          │                         │                    │                  │             │
-  └─────────────┤                          │                         │                    │                  │             │
-   Timer loop   │                          │                         │                    │                  │             │
+           ┌─────────┐             ┌────────────────┐        ┌────────────────┐  ┌───────────────────┐ ┌───────────┐ ┌──────────┐ ┌────────────┐
+           │  nsmd   │             │ Entity-Manager │        │    Gpu-Mgr     │  │MCTP Control Daemon│ │MCTP Demux │ │NSM Device│ │ObjectMapper│
+           └────┬────┘             └───────┬────────┘        └───────┬────────┘  └────────┬──────────┘ └─────┬─────┘ └─────┬────┘ └──────┬─────┘
+                │                          │                         │                    │                  │             │             │
+                │                          │                         │                    │                  │             │             │
+                │ GetSubTree               │                         │                    │                  │             │             │
+                │ /xyz/openbmc_project/inventory                     │                    │                  │             │             │
+                │ xyz.openbmc_project.inventory.item.Switch          │                    │                  │             │             │
+                | xyz.openbmc_project.inventory.item.FabricAdapter   │                    │                  │             │             │
+               ┌┴┐xyz.openbmc_project.inventory.item.Accelerator     │                    │                  │             │             │
+ Get Inventory │ ├─────────────────────────┬─────────────────────────┼────────────────────┼──────────────────┼─────────────┼────────────►│
+               │ │                         │                         │                    │                  │             │             │
+               │ │                         │                         │                    │                  │             │             │
+               │ │   response              │                         │                    │                  │             │             │
+               │ │ ◄───────────────────────┼─────────────────────────┼────────────────────┼──────────────────┼─────────────┼─────────────┤
+               └┬┘                         │                         │                    │                  │             │             │
+               ┌┴┐ ◄───────────────────────┼─────────────────────────┤                    │                  │             │             │
+               │ │ ◄───────────────────────┤                         │                    │                  │             │             │
+Get Config PDI │ │                         │                         │                    │                  │             │             │
+               │ │                         │                         │                    │                  │             │             │
+               └┬┘                         │                         │                    │                  │             │             │
+                │                          │                         │                    │                  │             │             │
+               ┌┴┐                         │                         │                    │                  │             │             │
+               │ │                         │                         │                    │                  │             │             │
+  Create sensor│ │                         │                         │                    │                  │             │             │
+               │ │                         │                         │                    │                  │             │             │
+               └┬┘                         │                         │                    │                  │             │             │
+                │                          │                         │                    │                  │             │             │
+               ┌┴┐                         │                         │                    │                  │             │             │
+      Associate│ │                         │                         │                    │                  │             │             │
+      Sensor   │ │                         │                         │                    │                  │             │             │
+               │ │                         │                         │                    │                  │             │             │
+               └┬┘                         │                         │                    │                  │             │             │
+                │                          │                         │                    │                  │             │             │
+                │ GetSubTree               │                         │                    │                  │             │             │
+                │ /xyz/openbmc_project/mctp│                         │                    │                  │             │             │
+               ┌┴┐xyz.openbmc_project.MCTP.Endpoint                  │                    │                  │             │             │
+  Get EID list │ ├─────────────────────────┬─────────────────────────┼────────────────────┼──────────────────┼─────────────┼────────────►│
+               │ │                         │                         │                    │                  │             │             │
+               │ │                         │                         │                    │                  │             │             │
+               │ │   response              │                         │                    │                  │             │             │
+               │ │ ◄───────────────────────┼─────────────────────────┼────────────────────┼──────────────────┼─────────────┼─────────────┤
+               └┬┘                         │                         │                    │                  │             │             │
+                │                          │                         │                    │                  │             │             │
+               ┌┴┐GetSupportedMessageTypes │                         │                    │                  │             │             │
+  Discover NSM │ ├─────────────────────────┼─────────────────────────┼────────────────────┼─────────────────►│             │             │
+  Endpoint     │ │                         │                         │                    │                  ├────────────►│             │
+               │ │                         │                         │                    │                  │             │             │
+               │ │                         │                         │                    │                  │             │             │
+               │ │   response              │                         │                    │                  │◄────────────┤             │
+               │ │ ◄───────────────────────┼─────────────────────────┼────────────────────┼──────────────────┤             │             │
+               └┬┘                         │                         │                    │                  │             │             │
+                │                          │                         │                    │                  │             │             │
+               ┌┴┐GetQueryDeviceInformation│                         │                    │                  │             │             │
+               │ ├─────────────────────────┼─────────────────────────┼────────────────────┼─────────────────►│             │             │
+ GetFRU Data   │ │                         │                         │                    │                  ├────────────►│             │
+ And Expose to │ │                         │                         │                    │                  │             │             │
+ D-Bus         │ │                         │                         │                    │                  │             │             │
+               │ │   response              │                         │                    │                  │◄────────────┤             │
+               │ │ ◄───────────────────────┼─────────────────────────┼────────────────────┼──────────────────┤             │             │
+               │ │                         │                         │                    │                  │             │             │
+               │ │GetInventoryInformation  │                         │                    │                  │             │             │
+               │ ├─────────────────────────┼─────────────────────────┼────────────────────┼─────────────────►│             │             │
+               │ │                         │                         │                    │                  ├────────────►│             │
+               │ │                         │                         │                    │                  │             │             │
+               │ │                         │                         │                    │                  │             │             │
+               │ │   response              │                         │                    │                  │◄────────────┤             │
+               │ │ ◄───────────────────────┼─────────────────────────┼────────────────────┼──────────────────┤             │             │
+               │ │                         │                         │                    │                  │             │             │
+               │ │                         │                         │                    │                  │             │             │
+               │ │                         │                         │                    │                  │             │             │
+               │ │                         │   ┌─────────────────┐   │                    │                  │             │             │
+               │ │ D-Bus signal notify     │   │Config json files│   │                    │                  │             │             │
+               │ │ New FruDevice created   │   └────────┬────────┘   │                    │                  │             │             │
+               └┬┴────────────────────────┬┴┐           │            │                    │                  │             │             │
+                │                         │ │           │            │                    │                  │             │             │
+                │          Probe json file│ │           │            │                    │                  │             │             │
+                │                         │ │           │            │                    │                  │             │             │
+                │                         │ │◄──────────┘            │                    │                  │             │             │
+                │                         └┬┘  matched file          │                    │                  │             │             │
+                │                          │                         │                    │                  │             │             │
+                │                         ┌┴┐                        │                    │                  │             │             │
+                │     Create inventory obj│ │                        │                    │                  │             │             │
+                │                         │ │                       ┌┴┐                   │                  │             │             │
+                │                         │ │                       │ │                   │                  │             │             │
+                │ ◄───────────────────────┴┬┘   Create inventory obj│ │                   │                  │             │             │
+                │  Send InterfaceAdd signal│                        │ │                   │                  │             │             │
+                │                          │                        │ │                   │                  │             │             │
+                │ ◄────────────────────────┼────────────────────────┴┬┘                   │                  │             │             │
+               ┌┴┐                         │ Send InterfaceAdd signal│                    │                  │             │             │
+               │ │                         │                         │                    │                  │             │             │
+  Create sensor│ │                         │                         │                    │                  │             │             │
+               │ │                         │                         │                    │                  │             │             │
+               └┬┘                         │                         │                    │                  │             │             │
+                │                          │                         │                    │                  │             │             │
+               ┌┴┐                         │                         │                    │                  │             │             │
+      Associate│ │                         │                         │                    │                  │             │             │
+      Sensor   │ │                         │                         │                    │                  │             │             │
+               │ │                         │                         │                    │                  │             │             │
+               └┬┘                         │                         │                    │                  │             │             │
+  ┌────────────►│                          │                         │                    │                  │             │             │
+  │            ┌┴┐ GetPortTelemetryCounter │                         │                    │                  │             │             │
+  │ Poll sensor│ ├─────────────────────────┼─────────────────────────┼────────────────────┼─────────────────►│             │             │
+  │ State      │ │                         │                         │                    │                  ├────────────►│             │
+  │            │ │                         │                         │                    │                  │             │             │
+  │            │ │                         │                         │                    │                  │             │             │
+  │            │ │                         │                         │                    │                  │             │             │
+  │            │ │  response               │                         │                    │                  │◄────────────┤             │
+  │            │ │◄────────────────────────┼─────────────────────────┼────────────────────┼──────────────────┤             │             │
+  │            └┬┘                         │                         │                    │                  │             │             │
+  │             │                          │                         │                    │                  │             │             │
+  └─────────────┤                          │                         │                    │                  │             │             │
+   Timer loop   │                          │                         │                    │                  │             │             │
 ```
 
 ### NSM Endpoint mockup responder
@@ -903,7 +977,7 @@ nsmtool sends the request message and displays the response message and also
 provides flexibility to parse the response message & display it in readable
 format.
 
-nsmtool supports the subcommands for NSM types such as discovery [Type 0], 
+nsmtool supports the subcommands for NSM types such as discovery [Type 0],
 telemetry [Type 1, 2, & 3], diag [Type 4], and config [Type 5].
 
 - Source files are implemented in C++.
@@ -918,7 +992,7 @@ If NSM commands are not yet supported in the nsmtool repository user can
 directly send the request message with the help of **nsmtool raw -d <data>** option.
 
 
-## Usage
+##### Usage
 
 User can see the nsmtool supported NSM types in the usage output available
 with the **-h** help option as shown below:
@@ -985,7 +1059,7 @@ Options:
   -s,--source   UINT REQUIRED Source Values: { GPU = 0, Memory = 1, T.Limit = 2}
 ```
 
-## nsmtool raw command usage
+##### nsmtool raw command usage
 
 nsmtool raw command option accepts request message in the hexadecimal
 bytes and send the response message in hexadecimal bytes.
@@ -1022,29 +1096,29 @@ payloadResp - stream of bytes displayed based on the response message format
 
 #### NSMTool commands and sub commands
 List of NSMTool commands and subcommands, along with ones which are targeted to be supported.
-| NSMTool Command 	| NSM Type          	| NSM Subcommands        	| Detail             | To be supported    |
+| NSMTool Command 	| NSM Type          	| NSM Subcommands        	| Detail             | To be supported [initialy]   |
 |--------------------|--------------------|--------------------------|--------------------|--------------------|
 | discovery         	| Type 0           	|     	| Device capability discovery type command |   |
 |              	|      	| Ping     	| get the status of responder if alive or not | Yes |
-|              	|     	| GetMessageTypes      	| get supported nvidia message types by the device | Yes|
-|               	|        | GetCommandCodes  	| get supported command codes by the device | Yes |
+|              	|     	| GetSupportedMessageTypes      	| get supported nvidia message types by the device | Yes|
+|               	|        | GetSupportedCommandCodes  	| get supported command codes by the device | Yes |
 |               	|        | GetEventSources     	| get event sources under message type |  |
 |              	|      	| SetCurrentEventSources     	| enable/disable generation of event sources for event sources |  |
 |              	|     	| GetCurrentEventSources      	| get currently active event sources |  |
 |              	|      	| SetEventSubscription     	| set event subscription |  |
 |              	|     	| GetEventSubscription      	| get event subscription |  |
 |              	|     	| GetEventLogRecord      	| get event log record |  |
-|              	|      	| QueryDeviceIdentification     	| query compliant devices for self-identification information |  |
+|              	|      	| QueryDeviceIdentification     	| query compliant devices for self-identification information | Yes |
 |              	|     	| ConfigureEventAck      	| set events which require acknowledgement upon delivery |  |
 | telemetry         	| Type 1, 2, and 3        	|     	| Network, PCI link and platform telemetry type command |   |
 |              	|      	| GetTemperature     	| get temperature from a given source in degrees Celsius | Yes |
-|              	|     	| GetAggregateTemp      	| get aggregate temperature from multiple sensors | Yes |
+|              	|     	| GetAggregateTemp      	| get aggregate temperature from multiple sensors |  |
 |               	|        | GetPower  	| get power reading from a given source in milliwatts |  |
 |               	|        | GetPowerLimits     	| get power limits from the devices |  |
 |              	|      	| SetPowerLimits     	| set power limits for the devices |  |
 |              	|     	| GetEDPpScalingFactor      	| get EDPp scaling factor in integer percentage | |
 |              	|      	| SetEDPpScalingFactor     	| set EDPp scaling factor as an integer percentage |  |
-|              	|     	| GetInventoryInfo      	| get inventory information | |
+|              	|     	| GetInventoryInfo      	| get inventory information | Yes |
 |              	|     	| GetOEMInformation      	| get OEM information | |
 |              	|     	| GetCurrentClockFrequency      	| get current clock frequency | |
 |              	|     	| SetClockLimit      	| set clock limit | |
@@ -1066,94 +1140,6 @@ List of NSMTool commands and subcommands, along with ones which are targeted to 
 |              	|     	| to be added      	| to be added | |
 | raw            	| Any type command  	|       	| Send a raw request and print response | Yes |
 
-
-### Event logging
-NSM event support polling and pushing event. By default, nsmd would enable NSM
-device to push event to MC asynchronously.
-The event id which will be enabled or required acknowledgement can be defined
-in EM json file like the example below. The nsmd will initialize nsm endpoint
-based on the config data in EM json file.
-#### example: event id configuration in EM json
-```
-   {
-      "Exposes": [
-         {
-            "Name": "enabled_event_ids",
-            "Type": "NSM_EVENT_SOURCE_ENABLE",
-            "EventIds": [1,3,4,5,7,8,9]
-         },
-         {
-            "Name": "acknowledged_event_ids",
-            "Type": "NSM_EVENT_ACKNOWLEDGEMENT",
-            "EventIds": [1,3,4]
-         }
-      ]
-   }
-```
-#### nsmd event initialization
-1. nsmd sends "getEventSubscription" to NSM endpoint to ensure that the
-   endpoint hasn't be configured by other HMC or BMC.
-2. nsmd sends "getCurrentEventSource" to get the event ID list supported by
-   the NSM endpoint.
-3. nsmd get the NSM_EVENT_SOURCE_ENABLE type configuration PDI from
-   EntityManager service for enabled event ID list.
-4. nsmd get the NSM_EVENT_ACKNOWLEDGEMENT type configuration PDI from
-   EntityManager service for event ID list which is delivery guarantees.
-5. nsmd only enables the event ID which is both listed in event ID list in
-   step2 and step3 by sending "setEventSource" command
-6. nsmd only enables acknowledgement feature for the event ID which is both
-   listed in event ID list in step2 and step4 by sending
-   "configureEventAcknowledgement" command
-7. nsmd send "setEventSubscription" command to set MC's eid to NSM endpoint.
-8. When MC received NSM event message, MC response the event acknowledgement
-   to NSM endpoint and call xyz.openbmc_project.Logging.Create method to keep
-   the received event to MC local storage.
-#### nsmd event Sequence Diagram
-```
-┌──────────────────────┐               ┌──────┐               ┌────────────┐      ┌──────────────┐
-│ phosphor-log-manager │               │ nsmd │               │ mctp-demux │      │ nsm endpoint │
-└──────────┬───────────┘               └───┬──┘               └──────┬─────┘      └──────┬───────┘
-           │                               │                         │                   │
-           │                               │ get event subscription  │                   │
-           │                               ├───────────────────────► ├─────────────────► │
-           │                               │                         │                   │
-           │                               │ ◄───────────────────────┤ ◄─────────────────┤
-           │                               │                         │                   │
-           │                               │                         │                   │
-           │             ┌────────────┐    │ get current event source│                   │
-           │             │EM json file│    ├────────────────────────►├─────────────────► │
-           │             └─────┬──────┘    │                         │                   │
-           │                   │           │◄────────────────────────┤◄──────────────────┤
-           │                   │           │                         │                   │
-           │                   └──────────►│                         │                   │
-           │                               │ set event source        │                   │
-           │                               │───────────────────────► ├─────────────────► │
-           │                               │                         │                   │
-           │                               │◄────────────────────────┤◄──────────────────┤
-           │                               │                         │                   │
-           │                               │ Configure Event Ack     │                   │
-           │                               ├────────────────────────►├─────────────────► │
-           │                               │                         │                   │
-           │                               │◄────────────────────────┤◄──────────────────┤
-           │                               │                         │                   │
-           │                               │                         │                   │
-           │                               │ set event subscription  │                   │
-           │                               ├────────────────────────►├─────────────────► │
-           │                               │                         │                   │
-           │                               │◄────────────────────────┤◄──────────────────┤   async event ocurred
-           │                               │                         │                   │
-           │                               │                         │                   │      │
-           │                               │                         │                   │      │
-           │                               │                         │ event message     │      │
-           │                               │◄────────────────────────┤◄──────────────────┤ ◄────┘
-           │                               │                         │                   │
-           │   xyz.openbmc_project.Logging ├────────────────────────►├─────────────────► │
-           │   create method               │ event acknowledgement   │                   │
-           │ ◄─────────────────────────────┤                         │                   │
-           │                               │                         │                   │
-           │                               │                         │                   │
-           │                               │                         │                   │
-```
 ### End to End data path of OpenBMC service block diagram
 ```
                     ┌──────────────────┐
@@ -1189,15 +1175,6 @@ MCTP over PCIe  │  ▲        │  ▲         │  ▲
               │  CX7  │    │ QM3  │    │ GB100 │
               └───────┘    └──────┘    └───────┘
 ```
-To run nsmd in single instance for all device or multiple instance per device
-can be changed by setting. The finally design is to be defined according the
-test result of Redfish performance.
-
-test plan:
-| test detail  | single instance for 11 NSM devices<br>CX7*1, QM3*2 and GB100*8 | multiple instance per NSM device |
-|--------------|----------------------------------------------------------------|----------------------------------|
-| steady state | MAX TAT:<br>AVG TAT:<br>Outlier:                               | MAX TAT:<br>AVG TAT:<br>Outlier: |
-| stress state | MAX TAT:<br>AVG TAT:<br>Outlier:                               | MAX TAT:<br>AVG TAT:<br>Outlier  |
 
 ## Alternatives Considered
 1. D-Bus Device Inventory created according to PLDM Type2 entity association PDRs
@@ -1289,4 +1266,205 @@ SatMC Round Trip time: 3.263 ms
 <6> TID:18 SensorID:12449 duration(us):3044
 <6> TID:18 SensorID:12304 duration(us):3633
 <6> TID:18 SensorID:12320 duration(us):3608
+```
+
+### (WIP) Improving sensor polling performance by aggregate command
+The NSM msg type3(platform telemetry) getTemperature(0x01), getPower(0x02)
+and readFanSpeed(0x07) support aggregate command to read all the sensor
+readings at once to reducing command overhead and Redfish API turn around time.
+User can define aggregate sensor configuration PDI to enable the feature.
+
+#### NSM_Aggregated_Temps configuration PDI
+| Configuration Property 	| type         | Description                                          	            |
+|------------------------	|--------      |-----------------------------------------------------------------	|
+| Name                   	| string array | Configuration PDI object path name                    	            |
+| Type                   	| string       | NSM_Aggregated_Temps                                    	         |
+| Association            	| string       | The D-Bus object path the state.PortMetric PDI should be populated.|
+| Sensor                  	| string array | Sensor Names                                          	            |
+| SensorIds                | uint8_t array| Sensor IDs                                                         |
+| UUID                   	| string       | The UUID of device. used for lookup the assigned EID 	            |
+
+#### Creating Aggregation Sensors
+When nsmd parse the NSM_aggregated_temps, it will create mulptile temperature sensor at D-Bus path
+/xyz/openbmc_project/sensors/temperature/{NAME?} define in Names array. Since there are multiple
+sensor's threshold setting in threshold array. nsmd find the corresponding thrshold PDI by the
+sensorId property as index.
+
+
+#### Polling Aggregation Sensors
+When nsmd update the NSM_aggreated_temps sensro, it sends NSM getTemperature
+command with sensorID=0xff to device to get all sensor reading at once.
+And then nsmd parse response structure defined in [7.3.1.2 aggregate variant][12]
+to update each sensors defined in SensorIds array.
+
+#### example: Aggregated Temp sensors configruation PDI
+```
+[
+   {
+      "Exposes": [
+         {
+            "Name": "CX7_0_aggreated_temp_sensors",
+            "Type": "NSM_Aggregated_Temps",
+            "Association": "/xyz/openbmc_project/inventory/system/board/CX7_0",
+            "SensorNames": ["CX7_0_temp_0", "CX7_0_mem_temp_1"],
+            "SensorIds": [0, 1],
+            "UUID": $UUID,
+            "Threshold": [
+               {
+                  "SensorId": 0,
+                  "Direction": "greater than",
+                  "Name": "upper critical",
+                  "Severity": 1,
+                  "Value": 108.0
+               },
+               {
+                  "SensorId": 0,
+                  "Direction": "greater than",
+                  "Name": "upper non critical",
+                  "Severity": 0,
+                  "Value": 90.0
+               },
+               {
+                  "SensorId": 0,
+                  "Direction": "less than",
+                  "Name": "lower non critical",
+                  "Severity": 0,
+                  "Value": 5
+               },
+               {
+                  "SensorId": 1,
+                  "Direction": "greater than",
+                  "Name": "upper critical",
+                  "Severity": 1,
+                  "Value": 108.0
+               },
+               {
+                  "SensorId": 1,
+                  "Direction": "greater than",
+                  "Name": "upper non critical",
+                  "Severity": 0,
+                  "Value": 90.0
+               },
+               {
+                  "SensorId": 1,
+                  "Direction": "less than",
+                  "Name": "lower non critical",
+                  "Severity": 0,
+                  "Value": 5
+               }
+            ]
+         }
+      ],
+   }
+   //...skip...
+]
+```
+#### example: the result of D-Bus object tree
+```
+root@Umbriel:~# busctl tree xyz.openbmc_project.NSM
+`-/xyz
+  `-/xyz/openbmc_project
+    |-/xyz/openbmc_project/FruDevice
+    | `-/xyz/openbmc_project/FruDevice/30
+    `-/xyz/openbmc_project/sensors
+      `-/xyz/openbmc_project/sensors/temperature
+        |-/xyz/openbmc_project/sensors/temperature/CX7_0_temp_0
+        `-/xyz/openbmc_project/sensors/temperature/CX7_0_mem_temp_1
+```
+### (WIP) Event logging
+NSM event supports polling and pushing event. By default, nsmd would enable NSM
+device to push event to MC asynchronously. The nsmd will initialize nsm endpoint
+based on the config data in EM json file.
+
+#### NSM_Event_Config configuration PDI
+| Configuration Property 	| type         | Description                                          	            |
+|------------------------	|--------      |-----------------------------------------------------------------	|
+| Name                   	| string array | Configuration PDI object path name                    	            |
+| Type                   	| string       | NSM_Event_Config                                       	         |
+| MessageType              | uint8_T      | NVIDIA message type                                   	            |
+| SubscribedEventIDs       | uint8_t array| Sensor IDs                                                         |
+| AcknowlegementEventIDs  	| uint8_t array| The UUID of device. used for lookup the assigned EID 	            |
+
+#### example: NSM event configuration in EM json
+```
+   {
+      "Exposes": [
+         {
+            "Name": "deviceCapabilityDiscoveryEventSetting",
+            "Type": "NSM_Event_Config",
+            "MessageType": 0,
+            "UUID": "c13e2b99-68e4-45f1-8686-409009062aa8",
+            "SubscribedEventIDs": [1,2],
+            "AcknowlegementEventIDs:[1,2]
+         },
+         {
+            "Name": "PlatformEnviroementalEventSetting",
+            "Type": "NSM_Event_Config",
+            "MessageType": 3,
+            "UUID": "c13e2b99-68e4-45f1-8686-409009062aa8",
+            "SubscribedEventIDs": [0],
+            "AcknowlegementEventIDs:[0]
+         },
+      ]
+   }
+```
+#### nsmd event initialization
+1. Entity-Manager loads NSM EM json for NSM Devices.
+2. nsmd get NSM_Event_Config PDI from Entity-Manager for each NSM message type.
+3. nsmd inspect the MessageType, SubscripbedEventID, AcknowlegementEventID and
+   UUID properties.
+4. nsmd send "setEventSource" command to EID looked up by UUID for enabling
+   message Type with SubscripbedEventID list got in setp3.
+5. nsmd send "configureEventAcknowledgment" command to EID looked up by UUID 
+   for enabling message Type with AcknowlegementEventID list got in setp3.
+6. nsmd send "setEventSubscription" command to set MC's eid to the EID looked
+   up by UUID got in step3.
+7. When MC received NSM event message, MC response the event acknowledgement
+   to NSM endpoint and call xyz.openbmc_project.Logging.Create method to keep
+   the received event to MC local storage.
+#### nsmd event Sequence Diagram
+```
+┌──────┐            ┌────────────────┐   ┌────────────┐      ┌──────────────┐  ┌──────────────────────┐
+│ nsmd │            │ Entity-Manager │   │ mctp-demux │      │ nsm endpoint │  │ phosphor-log-manager │
+└───┬──┘            └───────┬────────┘   └──────┬─────┘      └──────┬───────┘  └──────────┬───────────┘
+    │                       │                   │                   │                     │
+    │                       │  ┌────────────┐   │                   │                     │
+    │                       │  │EM json file│   ├─────────────────► │                     │
+    │                       │  └─────┬──────┘   │                   │                     │
+    │                       │        │          │ ◄─────────────────┤                     │
+    │                       │◄───────┘          │                   │                     │
+    │                       │                   │                   │                     │
+    │ get NSM_Event_Config PDI                  │                   │                     │
+    ├─────────────────────► │                   ├─────────────────► │                     │
+    │                       │                   │                   │                     │
+    │◄──────────────────────┤                   │◄──────────────────┤                     │
+    │                       │                   │                   │                     │
+    │                       │                   │                   │                     │
+    │ set event source      │                   │                   │                     │
+    │ ──────────────────────┼──────────────────►├─────────────────► │                     │
+    │                       │                   │                   │                     │
+    │◄──────────────────────┼───────────────────┤◄──────────────────┤                     │
+    │                       │                   │                   │                     │
+    │ Configure Event Ack   │                   │                   │                     │
+    ├───────────────────────┼──────────────────►├─────────────────► │                     │
+    │                       │                   │                   │                     │
+    │◄──────────────────────┼───────────────────┤◄──────────────────┤                     │
+    │                       │                   │                   │                     │
+    │                       │                   │                   │                     │
+    │ set event subscription│                   │                   │                     │
+    ├───────────────────────┼──────────────────►├─────────────────► │                     │
+    │                       │                   │                   │                     │
+    │◄──────────────────────┼───────────────────┤◄──────────────────┤ async event ocurred │
+    │                       │                   │                   │                     │
+    │                       │                   │                   │      │              │
+    │                       │                   │                   │      │              │
+    │                       │                   │ event message     │      │              │
+    │◄──────────────────────┼───────────────────┤◄──────────────────┤ ◄────┘              │
+    │                       │                   │                   │                     │
+    ├───────────────────────┼──────────────────►├─────────────────► │                     │
+    │ event acknowledgement │                   │                   │                     │
+    │                       │                   │             xyz.openbmc_project.Logging │
+    │                       │                   │             create│method               │
+    │◄──────────────────────┼───────────────────┼───────────────────┼─────────────────────┤
+    │                       │                   │                   │                     │
 ```
