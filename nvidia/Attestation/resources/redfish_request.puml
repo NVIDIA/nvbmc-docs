@@ -1,0 +1,46 @@
+@startuml
+skinparam ParticipantBorderColor DarkBlue
+skinparam ParticipantBackgroundColor LightBlue
+skinparam ArrowColor Olive
+skinparam ArrowFontColor Black
+skinparam SequenceArrowThickness 2
+
+participant "Redfish Client" as RedfishClient
+participant "bmcweb\nRedfish Server" as BMCWeb
+participant "SPDM Daemon" as SPDMDaemon
+participant "MCTP" as MCTP
+participant "SPDM Responder" as SPDMResponder
+
+' Sequence of interactions - Asynchronous Process with DBus initiation
+RedfishClient -> BMCWeb : POST Signed Measurement Request
+RedfishClient <-- BMCWeb : Get assigned task number (Task ID: X)
+BMCWeb -> SPDMDaemon : Refresh
+loop Check Task Status
+    RedfishClient -> BMCWeb : GET Task Status (Task ID: X)
+    BMCWeb -> RedfishClient : Task Status (Running/Completed)
+end
+SPDMDaemon -> MCTP : SPDM GetVersion
+MCTP -> SPDMResponder : Version
+SPDMResponder -> MCTP
+MCTP -> SPDMDaemon : Capabilities
+SPDMDaemon -> MCTP : Negotiate Algorithms
+MCTP -> SPDMDaemon : Algorithms
+SPDMDaemon -> MCTP : GetDigests
+MCTP -> SPDMDaemon : Digests
+SPDMDaemon -> MCTP : Get Certificate
+MCTP -> SPDMResponder : Certificate
+SPDMResponder -> MCTP
+MCTP -> SPDMDaemon : Get Measurements
+SPDMDaemon -> MCTP : Measurements
+MCTP -> SPDMDaemon : Update the D-bus Object
+
+RedfishClient -> BMCWeb : GET Signed measurements data\nIf success
+
+BMCWeb <- SPDMDaemon : Get Sign Measurement
+BMCWeb -> SPDMDaemon : Get D-Bus Object
+BMCWeb <- SPDMDaemon : Get D-Bus Object
+
+BMCWeb -> RedfishClient : Measurements data
+
+
+@enduml

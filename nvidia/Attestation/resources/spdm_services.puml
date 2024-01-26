@@ -1,0 +1,20 @@
+@startuml
+skinparam componentStyle uml2
+skinparam componentBorderColor DarkBlue
+skinparam componentBackgroundColor LightBlue
+skinparam componentArrowColor Olive
+skinparam componentArrowThickness 2
+
+component "SPDM Daemon" as SPDMDaemon
+
+component "bmcweb\nRedfish Server" as BMCWeb
+component "MCTP daemon" as MCTP
+component "PLDMD daemon" as PLDMDaemon
+component "Logging daemon" as Logging
+
+SPDMDaemon -down-> BMCWeb 
+SPDMDaemon -down-> MCTP 
+SPDMDaemon -down-> PLDMDaemon 
+SPDMDaemon -down-> Logging 
+
+@enduml

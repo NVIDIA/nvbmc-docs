@@ -1,0 +1,34 @@
+@startuml
+
+skinparam componentStyle uml2
+skinparam componentBorderColor DarkBlue
+skinparam componentBackgroundColor LightBlue
+skinparam componentArrowColor Olive
+skinparam componentArrowThickness 2
+
+component "SPDM Library" as SPDMLibrary {
+  [SPDM Library Code]
+}
+
+component "SPDM Daemon" as SPDMdaemon {
+  [SPDM Daemon Code]
+}
+
+component "Unit tests" as SPDMUnitTests {
+  [SPDM Unit tests code]
+}
+
+component "Fuzz Wrapper" as SPDMFuzzWrap {
+  [SPDM fuzz wrapper code]
+}
+
+component "libmctppacketcorrupt.so" as SPDMCorrupt {
+  [lib packet corrupt code]
+}
+
+' Relationships
+SPDMdaemon -down-> SPDMLibrary : Uses
+SPDMUnitTests -down-> SPDMLibrary : Uses
+SPDMFuzzWrap -down-> SPDMLibrary : Uses
+
+@enduml

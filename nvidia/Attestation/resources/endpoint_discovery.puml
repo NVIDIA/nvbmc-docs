@@ -1,0 +1,48 @@
+@startuml
+skinparam ParticipantBorderColor DarkBlue
+skinparam ParticipantBackgroundColor LightBlue
+skinparam ArrowColor Olive
+skinparam ArrowFontColor Black
+skinparam SequenceGroupHeaderFontColor DarkBlue
+skinparam SequenceGroupBackgroundColor Lavender
+skinparam SequenceGroupBorderColor Blue
+skinparam LifeLineBorderColor Blue
+skinparam LifeLineBackgroundColor LightYellow
+
+participant "SPDM D-Bus Obj" as SPDMDBusObj
+participant "SPDM Requester\nSPDM Daemon" as SPDMRequester
+participant "MCTP Daemon\n(HMC)" as MCTPDaemon
+participant "MCTP Endpoint" as MCTPEndpoint
+participant "SPDM Responder" as SPDMResponder
+participant "PLDMD daemon\n(inventory)" as PLDMDaemon
+
+SPDMRequester -> MCTPDaemon : Discover MCTP endpoints\nMCTP MessageType = 5,\nMediumType = PCIe|SPI|I2C,\nRootPath=/xyz/openbmc_\nproject/mctp\nInterface=xyz.openbmc_\nproject.MCTP.Endpoint
+activate MCTPDaemon
+MCTPDaemon -> MCTPEndpoint : MCTP Message
+activate MCTPEndpoint
+MCTPEndpoint -> MCTPDaemon : MCTP Message
+deactivate MCTPEndpoint
+MCTPDaemon -> SPDMRequester : MCTP Endpoints
+deactivate MCTPDaemon
+
+
+SPDMRequester -> PLDMDaemon : Ask inventory for MCTP eps\nMCTP MessageType = 5,\nMediumType = PCIe|SPI|I2C,\nRootPath=/xyz/openbmc_\nproject/mctp\nInterface=xyz.openbmc_\nproject.MCTP.Endpoint
+activate PLDMDaemon
+PLDMDaemon -> SPDMRequester: MCTP inventory objects
+deactivate PLDMDaemon
+
+SPDMRequester -> SPDMDBusObj : Create D-Bus Object\n(For Each Endpoint)
+
+SPDMRequester -> SPDMResponder : SPDM Initial Handshake
+activate SPDMResponder
+SPDMResponder -> SPDMRequester
+deactivate SPDMResponder
+
+SPDMRequester -> SPDMResponder : SPDM GET Measurements
+activate SPDMResponder
+SPDMResponder -> SPDMRequester : Measurements
+deactivate SPDMResponder
+
+SPDMRequester -> SPDMDBusObj : Update the D-Bus obj
+
+@enduml
