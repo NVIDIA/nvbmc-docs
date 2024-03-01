@@ -257,6 +257,12 @@ the device type should be specified in "fru_ignore" list via CLI parameter.
 10. Parse response to get FRU data.
 11. Expose FRU data to corresponding property name of FruDevice as [table1](#table-1)
 
+FRU Devices PDI will be published at Interface xyz.openbmc_project.FruDevice,
+and Object path /xyz/openbmc_project/FruDevice at xyz.openbmc_project.NSM D-Bus
+Service. Services that creates inventory PDIs, like Entity-Manager, should look
+out for FRU Device PDIs at Object Path /xyz/openbmc_project/FruDevice, and
+should not depend on the name of the D-Bus Service.
+
 #### Table 1
 NSM PropertyID to FruDevice PropertyName
 | NSM Property ID 	| Name              	| FruDevice Property Name 	|
@@ -267,18 +273,31 @@ NSM PropertyID to FruDevice PropertyName
 | 8               	| Build date        	| BOARD_MANUFACTURE_DATE  	|
 | N/A               	| N/A             	| BOARD_MANUFACTURE     	|
 
+#### FRU Device PDI Properties
+List of Properties of FRU Device PDI created by nsmd.
+D-Bus Interface - xyz.openbmc_project.FruDevice
+
+| Property               	| Type   	| Mandatory/Optional | NSM Command used to get Value            | Use                         |
+|--------------------------	|----------	|------------------- |----------------------------------------- | --------------------------- |
+| BOARD_PART_NUMBER       	| string 	| Mandatory          | Type 3 Get Inventory Information (0x11)  | For debugability.           |
+| DEVICE_TYPE            	| byte  	| Mandatory          | Type 0 Query Device Identification (0x09)| To determine list of inventories to be published. |
+| INSTANCE_NUMBER          	| byte   	| Mandatory          | Type 0 Query Device Identification (0x09)| To determine list of inventories to be published. |
+| SERIAL_NUMBER            	| string   	| Mandatory          | Type 3 Get Inventory Information (0x11)  | For debugability.           |
+| UUID                  	| string   	| Mandatory          | NA (Populated by MCTP Control Daemon)    | To uniquely identify a device and EID lookup.     |
+
+
 #### Example 1
-CX7 FruDevice D-Bus object
+FruDevice D-Bus object (for exposition purpose only)
 ```
-busctl introspect xyz.openbmc_project.FruDevice /xyz/openbmc_project/FruDevice/ConnectX_7_2P_NIC
-xyz.openbmc_project.FruDevice       interface -         -                                        -
-.BOARD_MANUFACTURE_DATE             property  s         "2022-12-12 - 14:03:00"                  emits-change
-.BOARD_PART_NUMBER                  property  s         "MCX750500B-0D00_DK"                     emits-change
-.BOARD_PRODUCT_NAME                 property  s         "ConnectX-7"                             emits-change
-.BOARD_SERIAL_NUMBER                property  s         "MT2249XZ0D6T"                           emits-change
-.DEVICE_TYPE                        property  s         "PCIeBridge"                             emits-change
-.INSTANCE_NUMBER                    property  t         1                                        emits-change
-.UUID                               property  s         "f72d6f90-5675-11ed-9b6a-0242ac120002"   emits-change
+root@e4869:~# busctl introspect xyz.openbmc_project.NSM /xyz/openbmc_project/FruDevice/30
+NAME                                TYPE      SIGNATURE RESULT/VALUE         FLAGS
+xyz.openbmc_project.FruDevice       interface -         -                    -
+.BOARD_PART_NUMBER                  property  s         "MCX750500B-0D00_DK" emits-change
+.DEVICE_TYPE                        property  y         2                    emits-change
+.EID                                property  y         30                   emits-change
+.INSTANCE_NUMBER                    property  y         0                    emits-change
+.SERIAL_NUMBER                      property  s         "SN123456789"        emits-change
+.UUID                               property  s         "550e8400-e29b-41d4- emits-change
 ```
 
 ### Creating Device Inventory
@@ -292,6 +311,11 @@ configurations for further initialization. The [example 2](#example-2) and
 For the case that Device Inventory which is not created by EntityManger, the
 service(e.g. GpuMgr) who creates the device Inventory should expose the
 necessary configuration like EntityManager does for nsmd parsing.
+
+Services that create device inventory should emit signal at object path 
+/xyz/openbmc_project/inventory whenever there is new configuration PDI at any of
+its child objects (generally it can be achieved by employing 
+org.freedesktop.DBus.ObjectManager interface).
 
 For the device supporting NSM protocol, there should be an inventory PDI
 created according to its device type retrieved by GetQueryDeviceInformation
