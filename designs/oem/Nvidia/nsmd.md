@@ -766,6 +766,21 @@ The json object array to config Entity Type and PDI mapping table
 * The Entity type are defined in [DSP0249](10)
 * The Inventory PDI list can be found in [phosphor-dbus-interface](11)
 
+### Class hierarchy for NSM Sensors
+As a result of processing of Configuration PDI by nsmd, various polymorphic containers will be generated. These containers contain class objects that defines implementation of a unique NSM Command. These class objects are also responsible for publishing data obtained from NSM endpoints to IPC system for consumer services like bmcweb. Hence it is highly desirable that these classes are organised in well defined class inheritance hierarchy to enforce separation of concerns, remove logic duplication and facilitate refactoring.  
+
+These classes have following primary responsibilities. 
+1. Provide unique interface for generating NSM request buffer and for processing of NSM response buffer.
+2. Implement NSM command specific encoding of request buffer and decoding of response buffer.
+3. Publish data obtained from a perticular NSM command to IPC system, like D-Bus or NVIDIA Shared-Memory.
+4. Provide common implementation for logic related to NSM Base spec.
+
+To satisfy these responsibilities, nsmd defines a class inheritance hierarchy as illustrated in image given below.
+In order to implement support for a NSM command, it is recommended to leverage existing classes whenever possible to avoid duplication of logic. If separate inheritance chain has to be created to implement yet unimplemented logic, it should inherit publicly from at least one appropriate parent class of the hierarchy, and put details related to various responsibilities in to new separate classes.  
+
+For exposition purpose only, actual identifier names may be different.
+![NSM Sensor class hierarchy](nsm_sensor_class_hierarchy.png)
+
 ### Polling sensor
 For polling sensor in background by single thread nsmd app, the nsmd start a
 timer expired every 250ms. When timer expired the nsmd send NSM command defined
