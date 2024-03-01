@@ -330,20 +330,30 @@ command.
 | FGPA (deviceType=3)      | xyz.openbmc_project.inventory.item.Accelerator    	|
 
 ### NSM configuration PDIs
-#### NSM_Temp
+#### Properties common for NSM_Temp, NSM_Power, NSM_Energy, and NSM_Voltage PDIs
+These properties will be present in PDIs listed below. Additional properties for these PDIs are captured in their respective tables.
+1. xyz.openbmc_project.Configuration.NSM_Temp
+2. xyz.openbmc_project.Configuration.NSM_Power
+3. xyz.openbmc_project.Configuration.NSM_Energy
+4. xyz.openbmc_project.Configuration.NSM_Voltage
+
+| Configuration Property 	| type   	    | Description                                          	            |
+|------------------------	|--------	    |-----------------------------------------------------------------	|
+| Name                   	| string 	    | Sensor Name                                          	            |
+| Association            	| `string[N]`   | Array of string pairs containing 'relationship' and 'object_path'. It will be used to populate Endpoints for ObjectMapper. [Reference](https://github.com/openbmc/docs/blob/master/architecture/object-mapper.md#associations) |
+| Aggregated               	| bool   	    | Should be true if sensor reading can be obtained from Aggregate variant of the command. |
+| UUID                   	| string 	    | The UUID of device. used for lookup the assigned EID 	             |
+| Priority                	| bool    	    | Indicate the sensor updated in priority                            |
+| SensorId                	| uint64_t     	| Value of SensorId field of request message of the NSM Command.     |
+
+#### Additional properties for xyz.openbmc_project.Configuration.NSM_Power
 | Configuration Property 	| type   	| Description                                          	            |
 |------------------------	|--------	|-----------------------------------------------------------------	|
-| Type                   	| string 	| NSM_Temp                                           	               |
-| Name                   	| string 	| Sensor Name                                          	            |
-| Association            	| string 	| The D-Bus object path the state.PortMetric PDI should be populated.|
-| SensorId                	| int    	| sensor ID                                                          |
-| UUID                   	| string 	| The UUID of device. used for lookup the assigned EID 	            |
-| Priority                	| bool    	| Indicate the sensor updated in priority                            |
+| AveragingInterval         | uint64_t 	| Averaging Interval for Power measurement (Refer NSM Command content). |
 
-#### NSM_NVLink
+#### xyz.openbmc_project.Configuration.NSM_NVLink
 | Configuration Property 	| type   	| Description                                                              |
 |------------------------	|--------	|-------------------------------------------------------------------------	|
-| Type                   	| string 	| NSM_NVLink                                                               |
 | Name                   	| string 	| Prefix of Port Name (e.g, Port_{INDEX})                                  |
 | Association            	| string 	| The D-Bus object path the state.PortMetric PDI should be populated.      |
 | Count                  	| int    	| The total port number of the device.<br>example: if Count=4 and Name="Port", then four state.PortMetric PDIs will be populated to<br>/xyz/openbmc_project/.../Ports/Port_0<br>/xyz/openbmc_project/.../Ports/Port_1<br>/xyz/openbmc_project/.../Ports/Port_2<br>/xyz/openbmc_project/.../Ports/Port_3 	|
@@ -397,9 +407,13 @@ An EM JSON file for QM3
          {
             "Name": "QM3_0_Temp_0",
             "Type": "NSM_Sensor",
-            "Association": "/xyz/openbmc_project/inventory/system/board/QM3_0",
+            "Association": [
+                "chassis", "/xyz/openbmc_project/inventory/system/chassis/QM3_$INSTANCE_NUMBER",
+                "processor", "/xyz/openbmc_project/inventory/system/fabric/switches/QM3_$INSTANCE_NUMBER"
+            ],
             "UUID": $UUID,
             "SensorId": 0,
+            "Aggregated": True,
             "Threshold": [
                {
                   "Direction": "greater than",
@@ -553,7 +567,6 @@ xyz.openbmc_project.Configuration.NSM_Sensor.Thresholds2 interface -         -  
 .Name                                                    property  s         "lower non critical" emits-change writable
 .Severity                                                property  d         0                    emits-change writable
 .Value                                                   property  d         5                    emits-change writable
-
 ```
 ### Processing Configuration Data
 The nsmd monitor D-Bus signal to get notification when EntityManager/GpuMgr
@@ -577,17 +590,29 @@ NSM Configuration PDIs(e.g. NSM_Sensor and NSM_NVLink)
 
 3. Create sensor according to Configuration PDI fetched from EM or GpuMgr
    1. Numeric Sensor:
+
       a. Expose xyz.openbmc_project.Sensor.Value PDI at the path defined at
          [table 2](#table-2) according to the "command" property of
          NSM_Sensor PDI got in step2. The [example 5](#example-5) shows the
          busctl introspect result.
+
       b. Expose xyz.openbmc_project.Association.Definitions PDI and set the
          endpoint property to {"chassis", "all_sensors", "{PARENT_CHASSIS}"}.
          The value PARENT_CHASSIS is from "Association" property of NSM_SENSOR
          configuration PDI.
+
       c. Look up the EID by the UUID property of configuration PDI and keep it
          in sensor class member variable for sending NSM command to device when
          updating sensor reading.
+
+      d. If value of Configuration property 'Aggregator' is True, iterate over
+         all Aggregators Class Objects of that EID, and if Aggregator Class
+         Object for the NSM Command is not found, create an Aggregator Class
+         Object. Put Aggregate Class object in priority sensor queue if Priority
+         property is True, otherwise put it in round-robin sensor queue. If an
+         existing Aggregate Class is found, put it in the correct sensor queue
+         as per Priority property. Then, add the Numeric Sensor to the 
+         Aggregator Class Object.
 
 #### Table 2
 Configuration PDI/sensor path mapping
@@ -599,10 +624,13 @@ Configuration PDI/sensor path mapping
 | NSM_Fan   | ReadFanSpeed     	| /xyz/openbmc_project/sensors/RPMS        	|
 
    2. NSM_NVLink:
+
       a. Expose xyz.openbmc_project.Inventory.State.PortMetrics at the path
          defined in the "Association" property of NSM_NVLink configuration PDI
+
       b. item.port PDI will be revised to move out counter properties to
          state.PortMetric PDI
+
       c. Look up the EID by the UUID property of configuration PDI and keep it
          in sensor class member variable for sending NSM command to device when
          updating the counter properties of PortMetrics PDI.
