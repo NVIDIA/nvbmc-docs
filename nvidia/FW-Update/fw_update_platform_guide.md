@@ -50,7 +50,7 @@
 
 ## HighLevel Architecture
 
-![Alt text](hla_fw_update.png)
+![Alt text](resources/hla_fw_update.png)
 
 ### bmcweb
 
@@ -88,17 +88,17 @@ keeping the RF task updates.
 
 ### PLDM T5 Update
 
-![Alt text](lld_pldmt5_update_flow.png)
+![Alt text](resources/lld_pldmt5_update_flow.png)
 
 #### PLDM FW Update Path
 
-![Alt text](pldm_fw_update_path.png)
+![Alt text](resources/pldm_fw_update_path.png)
 
 In MCTP networks, as described in the diagram above, wthe PLDM FD has multiple MCTP endpoints connected to the MCTP bridge over different physical medium. The PLDM UA discovers both the MCTP endpoints and for FW update the default behavior is to pick the faster medium for firmware update. In the example above, PLDM UA will pick the outgoing medium as *PCIe*, since it is faster than *I2C* medium. PLDM UA will pick *EID 2* as the destination MCTP endpoint since that is the faster incoming medium to the PLDM FD. So the factors are the fastest outgoing medium from the PLDM UA to the destination MCTP endpoint and the fastest incoming medium to the PLDM FD. PLDM UA does not have additional logic if there are multiple MCTP bridges.
 
 ### Non-PLDM device Update
 
-![Alt text](lld_item_updater_flow.png)
+![Alt text](resources/lld_item_updater_flow.png)
 
 ## Platform Enablement for FW update
 
@@ -145,9 +145,9 @@ Build PLDM firmware package with the descriptor, component information and the c
 https://github.com/openbmc/pldm/blob/master/tools/fw-update/pldm_fwup_pkg_creator.py - Tool to create PLDM package
 https://github.com/openbmc/pldm/blob/master/tools/fw-update/metadata-example.json - Configuration JSON to build firmware package
 
-![Alt text](pldm_fw_update_pkg.png)
+![Alt text](resources/pldm_fw_update_pkg.png)
 
-![Alt text](pldm_fw_update_pkg_hdr.png)
+![Alt text](resources/pldm_fw_update_pkg_hdr.png)
 
 
 ### Package to firmware Device association

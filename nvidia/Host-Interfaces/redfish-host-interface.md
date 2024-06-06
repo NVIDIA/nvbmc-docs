@@ -13,7 +13,7 @@ Created: Jan 29th, 2024
 - [Redfish Host Interface Specification](https://www.dmtf.org/sites/default/files/standards/documents/DSP0270_1.3.1.pdf)
 
 ## High Level Architecture 
-![BIOS BMC Communication](image-2023-10-18_10-56-53.png)
+![BIOS BMC Communication](resources/image-2023-10-18_10-56-53.png)
 - BIOS fetches the Host Interface related information over IPMI from the BMC and prepares the SMBIOS type 42 record. 
 - BIOS creates gets host interface credentials (bootstrap account) from the BMC over IPMI. Host interface credentials are created each time BIOS request them and are erased when BMC detects BIOS POST complete or reset. 
 - BIOS uses the bootstrap account to perform GET/PUT/PATCH request to BMC over redfish. 

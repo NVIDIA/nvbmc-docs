@@ -73,7 +73,7 @@ specification][4].
 The block diagram below shows a high-level overview of the MCTP services and how
 applications interact with them.
 
-![MCTP Block Diagram](mctp_image.png)
+![MCTP Block Diagram](resources/mctp_image.png)
 
 ## Low-level Design
 
@@ -98,7 +98,7 @@ loop are the following sources:
 
 A binding for the demux daemon needs to implement the following interface:
 
-![MCTP Binding Interface](MCTP_Binding_Interface.drawio.png)
+![MCTP Binding Interface](resources/MCTP_Binding_Interface.drawio.png)
 
 ### MCTP Control
 
@@ -123,7 +123,7 @@ network.
 The following sequence diagram shows the flow of discovery for both bridged and
 non-bridged configurations:
 
-![MCTP Discovery Flow](MCTP_Discovery.drawio.png)
+![MCTP Discovery Flow](resources/MCTP_Discovery.drawio.png)
 
 ### Code structure
 
