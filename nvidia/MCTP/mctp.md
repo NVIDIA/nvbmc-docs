@@ -781,21 +781,21 @@ key differences:
 [1]: https://www.dmtf.org/standards/pmci
 [2]: https://github.com/openbmc/libmctp
 [3]: https://github.com/openbmc/docs/blob/master/designs/mctp/mctp-userspace.md
-[4]: https://docs.google.com/document/d/1iTFb-8W-YaMIKl857S_-lluWqPduLyI5SV5L95sJEU0
-[5]: https://gitlab-master.nvidia.com/dgx/bmc/libmctp
-[6]: https://nvidia.sharepoint.com/sites/DGX-FPGA/DGX-FPGA-Atlas_SJ/Shared%20Documents/MAB_FILES/Mab_FPGA_IAS.docx?web=1
-[7]: https://gitlab-master.nvidia.com/dgx/bmc/openbmc/-/blob/OberonBW-24.02-5/meta-nvidia/meta-prime/meta-graceblackwell/meta-hmc/recipes-phosphor/libmctp/libmctp_%25.bbappend?ref_type=tags
-[8]: https://gitlab-master.nvidia.com/dgx/bmc/openbmc/-/blob/Core-24.01-2/meta-nvidia/recipes-phosphor/packagegroups/packagegroup-nvidia-apps.bb?ref_type=tags#L18
-[9]: https://gitlab-master.nvidia.com/dgx/bmc/openbmc/-/blob/Core-24.01-2/meta-nvidia/meta-gh/recipes-phosphor/libmctp/libmctp/systemd/mctp-pcie-ctrl.service?ref_type=tags
-[10]: https://gitlab-master.nvidia.com/dgx/bmc/openbmc/-/blob/Core-24.01-2/meta-nvidia/meta-gh/recipes-phosphor/libmctp/libmctp/systemd/mctp-pcie-demux.service?ref_type=tags
-[11]: https://gitlab-master.nvidia.com/dgx/bmc/libmctp/-/blob/Core-24.01-2_br/systemd/system/mctp-spi-ctrl.service?ref_type=heads
-[12]: https://gitlab-master.nvidia.com/dgx/bmc/libmctp/-/blob/Core-24.01-2_br/systemd/system/mctp-spi-demux.service?ref_type=heads
-[13]: https://gitlab-master.nvidia.com/dgx/bmc/openbmc/-/blob/Core-24.01-2/meta-nvidia/meta-gh/recipes-phosphor/libmctp/libmctp/systemd/mctp-i2c5-ctrl.service?ref_type=tags
-[14]: https://gitlab-master.nvidia.com/dgx/bmc/openbmc/-/blob/Core-24.01-2/meta-nvidia/meta-gh/recipes-phosphor/libmctp/libmctp/systemd/mctp-i2c5-demux.service?ref_type=tags
-[15]: https://gitlab-master.nvidia.com/dgx/bmc/libmctp/-/blob/develop/systemd/system/mctp-usb-ctrl.service?ref_type=heads
-[16]: https://gitlab-master.nvidia.com/dgx/bmc/libmctp/-/blob/develop/systemd/system/mctp-usb-demux.service?ref_type=heads
-[17]: https://gitlab-master.nvidia.com/dgx/bmc/openbmc/-/blob/Core-24.01-2/meta-nvidia/meta-hgx/recipes-phosphor/libmctp/libmctp/hgx/mctp?ref_type=tags
-[18]: https://gitlab-master.nvidia.com/dgx/bmc/openbmc/-/blob/Core-24.01-2/meta-nvidia/meta-hgx/recipes-phosphor/libmctp/libmctp/hgx/mctp-ctrl-hgx.conf?ref_type=tags
-[19]: https://gitlab-master.nvidia.com/dgx/bmc/openbmc/-/blob/Core-24.01-2/meta-nvidia/meta-hgx/recipes-phosphor/libmctp/libmctp_%25.bbappend?ref_type=tags
-[20]: https://gitlab-master.nvidia.com/dgx/bmc/openbmc/-/blob/Core-24.01-2/meta-nvidia/meta-gh/recipes-phosphor/libmctp/libmctp/systemd/mctp-pcie-demux.socket?ref_type=tags
-[21]: https://gitlab-master.nvidia.com/dgx/bmc/openbmc/-/blob/Core-24.01-2/meta-nvidia/meta-gh/recipes-kernel/linux/linux-aspeed/ranger.cfg?ref_type=tags#L61
+[4]:
+[5]:
+[6]:
+[7]:
+[8]:
+[9]:
+[10]:
+[11]:
+[12]:
+[13]:
+[14]:
+[15]:
+[16]:
+[17]:
+[18]:
+[19]:
+[20]:
+[21]:

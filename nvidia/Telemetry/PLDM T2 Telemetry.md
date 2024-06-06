@@ -19,7 +19,6 @@ Created: Feb 6, 2024
         - [DSP2054 NIC PLDM NIC Modeling](#dsp2054-nic-pldm-nic-modeling)
         - [DSP0245 PLDM IDs and Codes](#dsp0245-pldm-ids-and-codes)
         - [SBMR](#sbmr)
-        - [Grace PDR reference](#grace-pdr-reference)
         - [NVIDIA Networking Devices Host Management Support Application Note](#nvidia-networking-devices-host-management-support-application-note)
     - [High-Level architecture](#high-level-architecture)
         - [PLDM T2 over PCIe Grace](#pldm-t2-over-pcie-grace)
@@ -129,10 +128,6 @@ Created: Feb 6, 2024
 ### SBMR
 - version 2.0
 - https://developer.arm.com/documentation/den0069/latest/
-
-### Grace PDR reference
-
-- https://nvidia.sharepoint.com/:w:/r/sites/SatMC/_layouts/15/doc2.aspx?sourcedoc=%7BE0C5D54B-7FAF-4C75-91FE-555645494528%7D&file=Grace-pldm-pdr-reference.adoc.docx&action=default&mobileredirect=true&cid=e31f9784-a5ea-411b-a86b-a64369a218de
 
 ### NVIDIA Networking Devices Host Management Support Application Note
 

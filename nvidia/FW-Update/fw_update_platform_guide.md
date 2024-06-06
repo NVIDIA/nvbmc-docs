@@ -28,7 +28,7 @@
       - [Enable PLDM FW Update for AP with an ERoT (CEC1736/Glacier)](#enable-pldm-fw-update-for-ap-with-an-erot-cec1736glacier)
       - [Enable FW update for a non-PLDM device](#enable-fw-update-for-a-non-pldm-device)
   - [FW recovery support on NvBMC](#fw-recovery-support-on-nvbmc)
-    - [Recovery support on Vulcan](#recovery-support-on-vulcan)
+    - [Recovery support on HGX-H100](#recovery-support-on-hgx-h100)
 
 
 ## FW Update features
@@ -415,15 +415,15 @@ by bmcweb.
 ### Build Time Configuration
 
 1. Configure [PLDM build time configuration](#pldmd-build-time-configurations) to meet platform requirements.<br/>
-   - Example of Vulcan build configuration: https://gitlab-master.nvidia.com/dgx/bmc/openbmc/-/blob/develop/meta-nvidia/recipes-phosphor/pldm/pldm_%25.bbappend?ref_type=heads
+   - Example of GB200NVL build configuration:
 2. Configure [bmcweb build time configuration](#bmcweb-build-time-configurations) to meet platform requirements.<br/>
-   - Example of Vulcan build configuration: https://gitlab-master.nvidia.com/dgx/bmc/openbmc/-/blob/develop/meta-nvidia/recipes-phosphor/bmcweb/bmcweb_%25.bbappend?ref_type=heads
+   - Example of GB200NVL build configuration:
 3. Define PLDM descriptors and component information for the devices on the platform
 4. Configure [fw_update_config.json](#pldm-fw-update-configuration) for the platform
 5. Configure [fw_mctp_mapping.json](#fw-inventory-to-mctp-endpoint-mapping) for the platform
 6. Build PLDM firmware package for the platform with the descriptors and component information defined for the PLDM device<br/>
    - Script to build the PLDM package: https://github.com/openbmc/pldm/tree/master/tools/fw-update<br/>
-   - Configuration JSON used for Vulcan: https://urm.nvidia.com/artifactory/sw-dgx-fw-package-generic-local/Vulcan/Package/production/HGX-H100-H200x8_0014_240307.1.0_custom/H100-H200-14/nvfw_HGX-H100-H200x8_0014_240307.1.0_custom.fwpkg.pldm.json
+   - Configuration JSON used for GB200NVL:
 
 ### Enable new PLDM device for FW Update
 
@@ -438,9 +438,9 @@ This section covers details for enabling devices supporting PLDM T5. This docume
 
 | **Configuration**                                 | **Description**                                                                                                                                                                                                                                                                                          |
 | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Define strap value for the new AP                 | https://confluence.nvidia.com/pages/viewpage.action?spaceKey=GFWBC&title=CEC1736+Key+Management#CEC1736KeyManagement-KeyGroupandEROT_FW_CONFAssignments <br/><br/> Glacier design document - https://docs.google.com/document/d/12VnlI_eX4hvsMVXzOhS4SkwLsvUHZEl5-g-OEBJhGRw/edit#heading=h.vjsh4nyfekm6 |
-| Define APSKU value for the AP firmware            | https://confluence.nvidia.com/pages/viewpage.action?spaceKey=GFWBC&title=CEC1736+AP+SKU+ID  <br/><br/> APSKU design - https://docs.google.com/document/d/1pJq-ey0YQPt_kpfxUowP1cUEbOAtIAbZcvRt36DDi8g/edit#heading=h.nu09e4ctwzf                                                                         |
-| Identify the ECSKU value for the Glacier firmware | https://docs.google.com/document/d/1pJq-ey0YQPt_kpfxUowP1cUEbOAtIAbZcvRt36DDi8g/edit#heading=h.nu09e4ctwzf                                                                                                                                                                                               |
+| Define strap value for the new AP                 | https://confluence.nvidia.com/pages/viewpage.action?spaceKey=GFWBC&title=CEC1736+Key+Management#CEC1736KeyManagement-KeyGroupandEROT_FW_CONFAssignments |
+| Define APSKU value for the AP firmware            | https://confluence.nvidia.com/pages/viewpage.action?spaceKey=GFWBC&title=CEC1736+AP+SKU+ID |
+| Identify the ECSKU value for the Glacier firmware | |
 | Define component information for the AP firmware  | https://confluence.nvidia.com/pages/viewpage.action?spaceKey=GFWBC&title=CEC1736+Key+Management#CEC1736KeyManagement-KeyGroupandEROT_FW_CONFAssignments                                                                                                                                                  |
 
 Example of configuring the [fw_update_config.json](#pldm-fw-update-configuration) to add new PLDM device, description added for each section and fields.
@@ -507,7 +507,7 @@ Example of configuring the [fw_update_config.json](#pldm-fw-update-configuration
         }
 ```
 
-Example of configuring [fw_mctp_mapping.json](#fw-inventory-to-mctp-endpoint-mapping) for the Vulcan platform.
+Example of configuring [fw_mctp_mapping.json](#fw-inventory-to-mctp-endpoint-mapping) for the HGX-H100 platform.
 
 ```
 {
@@ -533,7 +533,7 @@ Example of configuring [fw_mctp_mapping.json](#fw-inventory-to-mctp-endpoint-map
 
 #### Enable FW update for a non-PLDM device
 
-ItemUpdater framework (https://gitlab-master.nvidia.com/dgx/bmc/nvidia-code-mgmt) is used for doing FW update for non-PLDM devices by packing the FW update in PLDM package.
+ItemUpdater framework (https://github.com/NVIDIA/nvidia-code-mgmt) is used for doing FW update for non-PLDM devices by packing the FW update in PLDM package.
 
 1. Add configuration for the device type and updater
 2. Add service ItemUpdater and DeviceUpdater service
@@ -542,25 +542,25 @@ ItemUpdater framework (https://gitlab-master.nvidia.com/dgx/bmc/nvidia-code-mgmt
 5. Add service to invoke the device specific update mechanism
 6. Inherit the BaseItemUpdater class and implement the device specific updater
 
-Example of simple ItemUpdater implementation to update the QSPI flash of Orin device. https://gitlab-master.nvidia.com/dgx/bmc/nvidia-code-mgmt/-/commit/38b7187c72e6f8a20f70796a3edebdce982c16dd
+Example of simple ItemUpdater implementation to update the QSPI flash of Orin device. https://github.com/NVIDIA/nvidia-code-mgmt/commit/38b7187c72e6f8a20f70796a3edebdce982c16dd
 
 ## FW recovery support on NvBMC
 
 On each platform, FW recovery of the platform involves recovering devices in a
 particular order based on the dependencies between the firmware. The section below
-describes how FW recovery is supported on Vulcan.
+describes how FW recovery is supported on HGX-H100.
 
-### Recovery support on Vulcan
+### Recovery support on HGX-H100
 
 For PLDM based devices (HMC, FPGA, GPU, NVSwitch, PEXSwitch)
 each devices ERoT implements the PLDM T5 stack. So once the ERoT is recovered
 PLDM T5 is possible. FPGA and HMC are exceptions since FPGA is the MCTP bridge
 and HMC implements the PLDM UA. So FPGA and HMC needs to be recovered first before
-PLDM T5 update is possible. Retimer is non-PLDM device on Vulcan and it can be
+PLDM T5 update is possible. Retimer is non-PLDM device on HGX-H100 and it can be
 recovered using PLDM T5 firmware update once HMC is recovered.
 
 https://docs.google.com/document/d/1343T3VyguJC_CFTWjA56vHuumpI-6BTxcHp27CmeVEg/edit#heading=h.bf918z1d4brr
-The following is a summary of each device on Vulcan and how its firmware can be recovered.
+The following is a summary of each device on HGX-H100 and how its firmware can be recovered.
 
 | **Device**                                                                           | **Recovery Method**        | **Comments**                                                                          |
 | :----------------------------------------------------------------------------------- | :------------------------- | :------------------------------------------------------------------------------------ |
