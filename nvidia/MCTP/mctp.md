@@ -31,7 +31,7 @@ Created: Feb 1, 2024
 
 ## Features/Capabilities
 
-This [repository][5] contains the NvBMC implementation of DMTF's MCTP protocol.
+This [repository][4] contains the NvBMC implementation of DMTF's MCTP protocol.
 This includes the base MCTP protocol itself as defined in the [DMTF MCTP Base
 Specification][1] as well as supported bindings.
 
@@ -67,8 +67,8 @@ Other applications can use the `xyz.openbmc_project.MCTP.Endpoint` D-Bus
 interface to discover MCTP-capable devices on the platform.
 
 In addition to the control and demux daemons, this repository also houses
-implementation of a `mctp-vdm-util` CLI that implements the [NVIDIA VDM
-specification][4].
+implementation of a `mctp-vdm-util` CLI that implements the NVIDIA VDM
+specification
 
 The block diagram below shows a high-level overview of the MCTP services and how
 applications interact with them.
@@ -298,7 +298,7 @@ finalize on the following:
 
 In case of using an FPGA bridge, this typically involves coordination with
 the FPGA teams to determine the number of downstream endpoints. The EIDs and
-MCTP UUIDs are defined by the FPGA team in an EAS [document][6].
+MCTP UUIDs are defined by the FPGA team in an IAS document.
 
 It is important to note that although EIDs that are assigned by the management
 controller are pre-determined, this may not always be the case when we have a
@@ -311,14 +311,14 @@ application code on the management controller rely on the EID being a certain
 specific value for a given device.
 
 Instead of an EID, the applications can use the MCTP UUID that the FPGA bridge
-can (optionally) assign to ERoT endpoints only. The FPGA design [documents][6]
+can (optionally) assign to ERoT endpoints only. The FPGA design documents
 will need to explicitly specify the UUID that the FPGA assigns to a specific
 endpoint. Note that not all endpoints support setting a UUID and may instead
 generate their own globally unique UUID.
 
 ### Platform Meta Layer Changes
 
-The libmctp package is pulled in by default by the meta-nvidia [layer][8]. The
+The libmctp package is pulled in by default by the meta-nvidia [layer][6]. The
 package, by default, will include libmctp core along with all the transport
 bindings except USB, the MCTP demux and control daemons, and the MCTP VDM
 utility executable.
@@ -407,7 +407,7 @@ whether the USB binding is enabled and when the USB binding is enabled, another
 flag can be used to indicate whether multiple MCTP packets are packed into a
 single USB packet (a feature unique to the MCTP over USB binding).
 
-Here is an example [bbappend][7] that enables both these flags:
+Here is an example [bbappend][5] where one can enable both these flags:
 
 ```bitbake
 EXTRA_OEMESON += " -Denable-usb=enabled "
@@ -501,23 +501,8 @@ configurations, which are out of scope of this document, but the above
 illustrates one such method. See the following section for a complete list of
 command line parameters, along with descriptions.
 
-As handy references, the following links can be used to understand how systemd
-services and environment files can be overridden:
-
-- PCIe Control Daemon Service [File][9]
-- PCIe Demux Daemon Service [File][10]
-- SPI Control Daemon Service [File][11]
-- SPI Demux Daemon Service [File][12]
-- SMBus Control Daemon Service [File][13]
-- SMBus Demux Daemon Service [File][14]
-- USB Control Daemon Service [File][15]
-- USB Demux Daemon Service [File][16]
-- System Environment [File][17]
-- Systemd Override With Conf. [File][18]
-- Sample Platform [bbappend][19]
-
 Platforms may want to use systemd's socket based activation for the demux
-daemon. This can be done by providing a socket file such as [this][20].
+daemon. This can be done by providing a socket file such as [this][7].
 
 ### Command Line Parameters
 
@@ -636,7 +621,7 @@ described in the meta layer changes section.
 
 To enable the SMBus binding to work, there are some Linux kernel configurations
 that need to be enabled. The SMBus binding relies on the I2C slave mqueue
-driver, which needs to be configured in the kernel [KConfig][21] for the
+driver, which needs to be configured in the kernel [KConfig][8] for the
 platform:
 
 ```Makefile
@@ -781,21 +766,8 @@ key differences:
 [1]: https://www.dmtf.org/standards/pmci
 [2]: https://github.com/openbmc/libmctp
 [3]: https://github.com/openbmc/docs/blob/master/designs/mctp/mctp-userspace.md
-[4]:
-[5]:
-[6]:
-[7]:
-[8]:
-[9]:
-[10]:
-[11]:
-[12]:
-[13]:
-[14]:
-[15]:
-[16]:
-[17]:
-[18]:
-[19]:
-[20]:
-[21]:
+[4]: https://github.com/NVIDIA/libmctp
+[5]: https://github.com/NVIDIA/openbmc/blob/develop/meta-nvidia/meta-prime/meta-gb200nvl/recipes-phosphor/libmctp/libmctp_%25.bbappend
+[6]: https://github.com/NVIDIA/openbmc/blob/develop/meta-nvidia/recipes-phosphor/packagegroups/packagegroup-nvidia-apps.bb
+[7]: https://github.com/NVIDIA/libmctp/blob/develop/systemd/system/mctp-usb-demux.socket
+[8]: https://github.com/NVIDIA/openbmc/blob/develop/meta-nvidia/meta-prime/recipes-kernel/linux/linux-aspeed/
