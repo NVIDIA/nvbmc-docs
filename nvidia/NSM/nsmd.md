@@ -16,134 +16,149 @@ Reviewers:
  Gilbert Chen (gilbertc@nvidia.com)
 
 ## Capabilities
+
 The nsmd service can discover NSM endpoint, gather telemetry data from the endpoints, and can publish them to D-Bus or similar IPC services, for consumer services like bmcweb.
 
 ## Relevant Standard Specifications
+
 1. NVIDIA System Management API Specification
 2. [DMTF MCTP Base Specification](https://www.dmtf.org/dsp/DSP0236)
 
 ## Architecture
 
-### nsmd Functional Sequence Diagram
-nsmd operational logic is summarised Sequence Diagram given below.
+### nsmd flow chart
+
+```text
+   ┌──────┐                       ┌───────────────┐              ┌───────────┐           ┌───────────┐     ┌────────────┐
+   │ nsmd │                       │ EntityManager │              │ FruDevice │           │ mctp-ctrl │     │ NSM Device │
+   └──┬───┘                       └───────┬───────┘              └─────┬─────┘           │  daemon   │     └────────────┘
+      │                                   │    ┌────┐                  │                 └────┬──────┘           │       
+      │                                   │    │JSON│                  │                      │                  │       
+      │                                   │    └─┬──┘                  │                      │                  │       
+      │                                   │ load │                    ┌┤                      │                  │       
+      │                                   │◄─────┘      fruDevice PDI ││ detect EEPROM        │                  │       
+      │                                   │     interfaceAdded signal ││ expose to D-Bus      │                  │       
+      │                                  ┌┤◄──────────────────────────┴┤                      │                  │       
+      │  config PDI InterfaceAdded signal││ Probe success              │                      │                  │       
+      │             e.g. NSM_Temp        ││                            │                      │                  │       
+     ┌┤  ◄───────────────────────────────││                            │                      │                  │       
+     ││                                  ││                            │                      │                  │       
+     ││1.get UUID for devType and inst#  ││                            │                      │                  │       
+     ││2.search nsmDevice(devType, inst#)││                            │                      │                  │       
+     ││3.create nsmDevice if not found   ││                            │                      │                  │       
+     ││4.create sensor add to nsmDevice  ││                            │                      │                  │       
+     ││5.start sensor pollign task for   ││                            │                      │                  │       
+     └┤  the nsmDevice if not start yet  ││                            │                      │                  │       
+      │                                  ││                            │                      │                  │       
+      │             InterfaceAdded signal││                            │                      │                  │       
+      │             NSM_Tble_RemapInst   ││                            │                      │                  │       
+     ┌┤  ◄───────────────────────────────││                            │                      │                  │       
+     ││1.get name for devType            ││                            │                      │                  │       
+     ││2.get type for remapping type     ││                            │                      │                  │       
+     ││3.add table to deviceManager      ││                            │                      │                  │       
+     └┤                                  ││                            │                      │                  │       
+      │                                  ││                            │                      │                  │       
+      │             interfaceAddes singal││                            │                      │                  │       
+      │             NSM_XXX              ││                            │                      │                  │       
+     ┌┤  ◄───────────────────────────────┴┤                            │                      │                  │       
+     ││  ...                              │                            │                      │                  │       
+     └┤                                   │                            │                      │                  │       
+
+   ┌──────┐                                                                              ┌───────────┐     ┌────────────┐
+   │ nsmd │                                                                              │ mctp-ctrl │     │ NSM Device │
+   └──┬───┘                                                                              │  daemon   │     └─────┬──────┘
+      │                                                                                  └────┬──────┘           │       
+      │                                                                                      ┌┤ EID enumerated   │       
+      │                                                  xyz.openbmc_project.MCTP.Endpoint   ││ or start to support NSM  
+      │                                           interfaceAdded or PropertiesChanged signal ││                  │       
+      │                                                "Enabled=true","msgType(0x7E) is add" ││                  │       
+     ┌┤  ◄───────────────────────────────────────────────────────────────────────────────────┴┤                  │       
+     ││1.check if EID support message type 0x7E                                               │                  │       
+     ││2.send queryDeviceIdentification                                                       │                  │       
+     ││  ─────────────────────────────────────────────────────────────────────────────────────┼────────────────► │       
+     ││                                                                           response devType=X Instance#=Y │       
+     ││  ◄────────────────────────────────────────────────────────────────────────────────────┼───────────────── │       
+     ││3.add EID to discoveredEIDs table                                                      │                  │       
+     ││4.record devType,Inst# to table                                                        │                  │       
+     └┤5.mark EID is online                                                                   │                  │       
+
+   ┌──────┐                                                                              ┌───────────┐     ┌────────────┐
+   │ nsmd │                                                                              │ mctp-ctrl │     │ NSM Device │
+   └──┬───┘                                                                              │  daemon   │     └─────┬──────┘
+      │                                                                                  └────┬──────┘           │       
+      │                                                xyz.openbmc_project.MCTP.Endpoint     ┌┤ detect EID       │       
+      │                                                    propertiesChanged signal          ││ offline          │       
+      │                                            Enabled=false or msgType(0x7E) is removed ││                  │       
+     ┌┤ ◄────────────────────────────────────────────────────────────────────────────────────┴┤                  │       
+     ││ search nsmDevice by EID and set isActive to false                                     │                  │       
+     ││ update DiscoveredEIDs table to set EID offline                                        │                  │       
+     ││                                                                                       │                  │       
+     └┤                                                                                       │                  │       
+
+   ┌──────┐                                                                              ┌───────────┐     ┌────────────┐
+   │ nsmd │                                                                              │ mctp-ctrl │     │ NSM Device │
+   └──┬───┘                                                                              │  daemon   │     └─────┬──────┘
+      │                                                                                  └────┬──────┘           │       
+┌──► ┌┤ sensor doPollingTask start                                                            │                  │       
+│    ││                                                                                       │                  │       
+│    ││ if(nsmDevice.isActive==false) {                                                       │                  │       
+│    ││   remap the inst# if remapTable for the devType is available                          │                  │       
+│    ││   search EID for devType=X,Inst#=Y                                                    │                  │       
+│    ││   set isActive=true if EID is online                                                  │                  │       
+│    ││ }                                                                                     │                  │       
+│    └┤                                                                                       │                  │       
+│    ┌┤                                                                                       │                  │       
+│    ││ if(nsmDevice.isActive==false) {                                                       │                  │       
+│    ││   sleep and continue sensor polling loop                                              │                  │       
+│    ││ }                                                                                     │                  │       
+│    └┤                                                                                       │                  │       
+│    ┌┤                                                                                       │                  │       
+│    ││ if(nsmDevice.isActive==true) {                                                        │                  │       
+│    ││   foreach sensor in nsmDevice              send NSM command to get reading            │                  │       
+│    ││   call sensor.update()       ─────────────────────────────────────────────────────────┼────────────────► │       
+│    ││   handle response                          response                                   │                  │       
+│    ││   update PDI                 ◄────────────────────────────────────────────────────────┼────────────────  │       
+│    ││ }                                                                                     │                  │       
+│    └┤ sleep                                                                                 │                  │       
+└─────┘                                                                                                                  
 ```
-           ┌─────────┐             ┌────────────────┐        ┌────────────────┐  ┌───────────────────┐ ┌───────────┐ ┌──────────┐ ┌────────────┐
-           │  nsmd   │             │ Entity-Manager │        │    Gpu-Mgr     │  │MCTP Control Daemon│ │MCTP Demux │ │NSM Device│ │ObjectMapper│
-           └────┬────┘             └───────┬────────┘        └───────┬────────┘  └────────┬──────────┘ └─────┬─────┘ └─────┬────┘ └──────┬─────┘
-                │                          │                         │                    │                  │             │             │
-                │                          │                         │                    │                  │             │             │
-                │ GetSubTree               │                         │                    │                  │             │             │
-                │ /xyz/openbmc_project/inventory                     │                    │                  │             │             │
-                │ xyz.openbmc_project.inventory.item.Switch          │                    │                  │             │             │
-                | xyz.openbmc_project.inventory.item.FabricAdapter   │                    │                  │             │             │
-               ┌┴┐xyz.openbmc_project.inventory.item.Accelerator     │                    │                  │             │             │
- Get Inventory │ ├─────────────────────────┬─────────────────────────┼────────────────────┼──────────────────┼─────────────┼────────────►│
-               │ │                         │                         │                    │                  │             │             │
-               │ │                         │                         │                    │                  │             │             │
-               │ │   response              │                         │                    │                  │             │             │
-               │ │ ◄───────────────────────┼─────────────────────────┼────────────────────┼──────────────────┼─────────────┼─────────────┤
-               └┬┘                         │                         │                    │                  │             │             │
-               ┌┴┐ ◄───────────────────────┼─────────────────────────┤                    │                  │             │             │
-               │ │ ◄───────────────────────┤                         │                    │                  │             │             │
-Get Config PDI │ │                         │                         │                    │                  │             │             │
-               │ │                         │                         │                    │                  │             │             │
-               └┬┘                         │                         │                    │                  │             │             │
-                │                          │                         │                    │                  │             │             │
-               ┌┴┐                         │                         │                    │                  │             │             │
-               │ │                         │                         │                    │                  │             │             │
-  Create sensor│ │                         │                         │                    │                  │             │             │
-               │ │                         │                         │                    │                  │             │             │
-               └┬┘                         │                         │                    │                  │             │             │
-                │                          │                         │                    │                  │             │             │
-               ┌┴┐                         │                         │                    │                  │             │             │
-      Associate│ │                         │                         │                    │                  │             │             │
-      Sensor   │ │                         │                         │                    │                  │             │             │
-               │ │                         │                         │                    │                  │             │             │
-               └┬┘                         │                         │                    │                  │             │             │
-                │                          │                         │                    │                  │             │             │
-                │ GetSubTree               │                         │                    │                  │             │             │
-                │ /xyz/openbmc_project/mctp│                         │                    │                  │             │             │
-               ┌┴┐xyz.openbmc_project.MCTP.Endpoint                  │                    │                  │             │             │
-  Get EID list │ ├─────────────────────────┬─────────────────────────┼────────────────────┼──────────────────┼─────────────┼────────────►│
-               │ │                         │                         │                    │                  │             │             │
-               │ │                         │                         │                    │                  │             │             │
-               │ │   response              │                         │                    │                  │             │             │
-               │ │ ◄───────────────────────┼─────────────────────────┼────────────────────┼──────────────────┼─────────────┼─────────────┤
-               └┬┘                         │                         │                    │                  │             │             │
-                │                          │                         │                    │                  │             │             │
-               ┌┴┐GetSupportedMessageTypes │                         │                    │                  │             │             │
-  Discover NSM │ ├─────────────────────────┼─────────────────────────┼────────────────────┼─────────────────►│             │             │
-  Endpoint     │ │                         │                         │                    │                  ├────────────►│             │
-               │ │                         │                         │                    │                  │             │             │
-               │ │                         │                         │                    │                  │             │             │
-               │ │   response              │                         │                    │                  │◄────────────┤             │
-               │ │ ◄───────────────────────┼─────────────────────────┼────────────────────┼──────────────────┤             │             │
-               └┬┘                         │                         │                    │                  │             │             │
-                │                          │                         │                    │                  │             │             │
-               ┌┴┐GetQueryDeviceInformation│                         │                    │                  │             │             │
-               │ ├─────────────────────────┼─────────────────────────┼────────────────────┼─────────────────►│             │             │
- GetFRU Data   │ │                         │                         │                    │                  ├────────────►│             │
- And Expose to │ │                         │                         │                    │                  │             │             │
- D-Bus         │ │                         │                         │                    │                  │             │             │
-               │ │   response              │                         │                    │                  │◄────────────┤             │
-               │ │ ◄───────────────────────┼─────────────────────────┼────────────────────┼──────────────────┤             │             │
-               │ │                         │                         │                    │                  │             │             │
-               │ │GetInventoryInformation  │                         │                    │                  │             │             │
-               │ ├─────────────────────────┼─────────────────────────┼────────────────────┼─────────────────►│             │             │
-               │ │                         │                         │                    │                  ├────────────►│             │
-               │ │                         │                         │                    │                  │             │             │
-               │ │                         │                         │                    │                  │             │             │
-               │ │   response              │                         │                    │                  │◄────────────┤             │
-               │ │ ◄───────────────────────┼─────────────────────────┼────────────────────┼──────────────────┤             │             │
-               │ │                         │                         │                    │                  │             │             │
-               │ │                         │                         │                    │                  │             │             │
-               │ │                         │                         │                    │                  │             │             │
-               │ │                         │   ┌─────────────────┐   │                    │                  │             │             │
-               │ │ D-Bus signal notify     │   │Config json files│   │                    │                  │             │             │
-               │ │ New FruDevice created   │   └────────┬────────┘   │                    │                  │             │             │
-               └┬┴────────────────────────┬┴┐           │            │                    │                  │             │             │
-                │                         │ │           │            │                    │                  │             │             │
-                │          Probe json file│ │           │            │                    │                  │             │             │
-                │                         │ │           │            │                    │                  │             │             │
-                │                         │ │◄──────────┘            │                    │                  │             │             │
-                │                         └┬┘  matched file          │                    │                  │             │             │
-                │                          │                         │                    │                  │             │             │
-                │                         ┌┴┐                        │                    │                  │             │             │
-                │     Create inventory obj│ │                        │                    │                  │             │             │
-                │                         │ │                       ┌┴┐                   │                  │             │             │
-                │                         │ │                       │ │                   │                  │             │             │
-                │ ◄───────────────────────┴┬┘   Create inventory obj│ │                   │                  │             │             │
-                │  Send InterfaceAdd signal│                        │ │                   │                  │             │             │
-                │                          │                        │ │                   │                  │             │             │
-                │ ◄────────────────────────┼────────────────────────┴┬┘                   │                  │             │             │
-               ┌┴┐                         │ Send InterfaceAdd signal│                    │                  │             │             │
-               │ │                         │                         │                    │                  │             │             │
-  Create sensor│ │                         │                         │                    │                  │             │             │
-               │ │                         │                         │                    │                  │             │             │
-               └┬┘                         │                         │                    │                  │             │             │
-                │                          │                         │                    │                  │             │             │
-               ┌┴┐                         │                         │                    │                  │             │             │
-      Associate│ │                         │                         │                    │                  │             │             │
-      Sensor   │ │                         │                         │                    │                  │             │             │
-               │ │                         │                         │                    │                  │             │             │
-               └┬┘                         │                         │                    │                  │             │             │
-  ┌────────────►│                          │                         │                    │                  │             │             │
-  │            ┌┴┐ GetPortTelemetryCounter │                         │                    │                  │             │             │
-  │ Poll sensor│ ├─────────────────────────┼─────────────────────────┼────────────────────┼─────────────────►│             │             │
-  │ State      │ │                         │                         │                    │                  ├────────────►│             │
-  │            │ │                         │                         │                    │                  │             │             │
-  │            │ │                         │                         │                    │                  │             │             │
-  │            │ │                         │                         │                    │                  │             │             │
-  │            │ │  response               │                         │                    │                  │◄────────────┤             │
-  │            │ │◄────────────────────────┼─────────────────────────┼────────────────────┼──────────────────┤             │             │
-  │            └┬┘                         │                         │                    │                  │             │             │
-  │             │                          │                         │                    │                  │             │             │
-  └─────────────┤                          │                         │                    │                  │             │             │
-   Timer loop   │                          │                         │                    │                  │             │             │
+
+### nsmd instanceNumber remapping
+
+```text
+┌──────────────┐                        ┌───────────────┐                                                                                   
+│SensorManager │                        │ DeviceManager │                                                                                   
+├──────────────┴───┐                    ├───────────────┴────────────┐                                                                      
+│NsmDevice[]   ────┼───┐                │ DiscoveredEIDs[]   ────────┼───┐                                                                  
+│...               │   │                │ mapInstToInst[DevType] ────┼───┼────────────────────────────────┐                                 
+├──────────────────┤   │                │ mapUuidToInst[DevType]  ───┼───┼─────────────────────────────┐  │                                 
+│doPollingTask()   │   │                │ mapEidToInst[DevType]      │   │                             │  │                                 
+│                  │   │                │ ...                        │   │                             │  │                                 
+└──────────────────┘   │                ├────────────────────────────┤   │                             │  │                                 
+                       │                │ SearchEIDs()               │   │                             │  │          ┌──────────────────┐   
+                       │                │ ...                        │   │                             │  └────────► │mapInstToInst[GPU]│   
+                       │                └────────────────────────────┘   │                             │             ├──────────────────┴─┐ 
+                       │  ┌─────────────┐                                │  ┌────────────────┐         └──────────┐  │ 4 -> 0             │ 
+                       └─►│ NsmDevice[] │                                └─►│DiscoveredEIDs[]│                    │  │ 5 -> 1             │ 
+                          ├──────┬──────┴─────────┐                         ├────┬───────────┴──────────────────┐ │  │ 6 -> 2             │ 
+                          │index#│ DevType:Inst#  │                         │EID │ DevType, Inst#, Uuid, active │ │  │ 7 -> 3             │ 
+                          ├──────┴────────────────┤                         ├────┴──────────────────────────────┤ │  │ 0 -> 4             │ 
+                          │[0]     FPGA     0     │                         │ 12    FPGA     0     abc1   true  │ │  │ 1 -> 5             │ 
+                          │[1]     ERoT     0     │                         │ 13    ERoT     0->0  abc2   true  │ │  │ 2 -> 6             │ 
+                          │[2]     ERoT     1     │                         │ 14    ERoT     0->1  abc3   true  │ │  │ 3 -> 7             │ 
+                          │[3]     ERoT     2     │                         │ 15    ERoT     0->2  abc4   true  │ │  └────────────────────┘ 
+                          │[4]     SWITCH   0     │                         │ 22    SWITCH   0     abc5   true  │ │  ┌───────────────────┐  
+                          │[5]     BRIDGE 255     │   matched after         │ 23    BRIDGE 255     abc6   true  │ └─►│mapUuidToInst[ERoT]│  
+                          │[6]     GPU      0     │ ◄────────────────────►  │ 28    GPU      4->0  abc7   true  │    ├───────────────────┴─┐
+                          │[7]     GPU      1     │   inst# was remapped    │ 29    GPU      5->1  abc8   true  │    │ abc2 -> 0           │
+                          └───────────────────────┘   via mapXXXtoInst      └───────────────────────────────────┘    │ abc3 -> 1           │
+                                                                                           //remap inst#             │ abc4 -> 2           │
+                                                                                           //if table is available   └─────────────────────┘
 ```
 
 ### End to End data path of OpenBMC service block diagram
-```
+
+```text
                     ┌──────────────────┐
                     │    Redfish       │
                     └──────┬───────────┘
@@ -181,23 +196,26 @@ MCTP over PCIe  │  ▲        │  ▲         │  ▲
 ## Design
 
 ## Interaction with other services and relevant D-Bus APIs
+
 nsmd interacts with other services listed below, using D-Bus IPC mechanism. In OpenBMC framework D-Bus Interfaces sometimes are referred as Phosphor D-Bus Interfaces (or PDI for short), and hence both the terms are used interchangeably in this document.
 1. MCTP demux and control daemons
 2. Entity Manager
 3. PLDM daemon
 
 ## Platform Enablement
+
 Following sections outline steps to be followed to enable telemetry acquisition from an NSM endpoint using nsmd. In addition these sections can also be referred to understand various nsmd capabilities and its dependencies on other services and involved D-Bus Interfaces.
 
 ### Discovering NSM endpoint
-nsmd detects creation of D-Bus Interface xyz.openbmc_project.MCTP.Endpoint at object path /xyz/openbmc_project/mctp. To identify whether an MCTP endpoint support NSM, nsmd check if 0x7E (VDM-PCI) is present in Property SupportedMessageTypes of this Interface. Similar exercise can also be carried out manually, to check whether an MCTP endpoint supports NSM or not.
 
-nsmd uses D-Bus IPC service, to publish information for each device endpoints that supports NSM. D-Bus Interface - herein referred as FRU PDI - xyz.openbmc_project.FruDevice will be published at object path /xyz/openbmc_project/FruDevice/{DeviceType}_{InstanceNumber} by nsmd.
+nsmd detects creation of D-Bus Interface xyz.openbmc_project. MCTP. Endpoint at object path /xyz/openbmc_project/mctp. To identify whether an MCTP endpoint support NSM, nsmd check if 0x7E (VDM-PCI) is present in Property SupportedMessageTypes of this Interface. Similar exercise can also be carried out manually, to check whether an MCTP endpoint supports NSM or not.
 
+nsmd uses D-Bus IPC service, to publish information for each device endpoints that supports NSM. D-Bus Interface - herein referred as FRU PDI - xyz.openbmc_project. FruDevice will be published at object path /xyz/openbmc_project/FruDevice/{DeviceType}_{InstanceNumber} by nsmd.
+
+#### FRU Device PDI Properties
 
 #### FRU Device PDI Properties
 
-#### FRU Device PDI Properties
 List of Properties of FRU Device PDI created by nsmd. The list is not exhaustive.
 
 | Property               	| Type   	| Mandatory/Optional | NSM Command used to get Value            | Use                         |
@@ -208,9 +226,10 @@ List of Properties of FRU Device PDI created by nsmd. The list is not exhaustive
 | SERIAL_NUMBER            	| string   	| Mandatory          | Type 3 Get Inventory Information (0x11)  | For debugability.           |
 | UUID                  	| string   	| Mandatory          | NA (Populated by MCTP Control Daemon)    | To uniquely identify a device and EID lookup.     |
 
-
 #### Example 1
+
 FruDevice D-Bus object (for exposition purpose only)
+
 ```
 root@e4869:~# busctl introspect xyz.openbmc_project.NSM /xyz/openbmc_project/FruDevice/30
 NAME                                TYPE      SIGNATURE RESULT/VALUE         FLAGS
@@ -224,14 +243,17 @@ xyz.openbmc_project.FruDevice       interface -         -                    -
 ```
 
 ### Enabling an NSM endpoint and gathering of telemetry values from it
+
 nsmd looks out for creation of certain D-Bus Interfaces at /xyz/openbmc_project/inventory Object path, to start requesting telemetry value from an NSM endpoint.
 
 These interfaces should also contains individual telemetry specific details like which NSM command to use and its content. These interfaces are herein referred to as Configuration PDIs (Phosphor D-Bus Interfaces).
 
-However, nsmd doesn't create Configuration PDIs itself and rely on Entity Manager for their creation. nsmd has configuration driven design and since Configuration PDIs are static, Entity Manager is available as part of OpenBMC infrastructure to host Configuration PDIs on D-Bus. Entity Manager detects the existence of D-Bus Interface xyz.openbmc_project.FruDevice (could have been published by nsmd as mentioned in previous section), on any of the D-Bus services and publishes Configuration PDI based on its content. Entity Manager uses JSON configuration file to determine list of Configuration PDI and their content to be published, upon detection of certain type of FRU Device. Please refer Entity Manager design documents for in depth understanding of the process of publishing Configuration PDI from FRU device D-Bus Interface.
+However, nsmd doesn't create Configuration PDIs itself and rely on Entity Manager for their creation. nsmd has configuration driven design and since Configuration PDIs are static, Entity Manager is available as part of OpenBMC infrastructure to host Configuration PDIs on D-Bus. Entity Manager detects the existence of D-Bus Interface xyz.openbmc_project. FruDevice (could have been published by nsmd as mentioned in previous section), on any of the D-Bus services and publishes Configuration PDI based on its content. Entity Manager uses JSON configuration file to determine list of Configuration PDI and their content to be published, upon detection of certain type of FRU Device. Please refer Entity Manager design documents for in depth understanding of the process of publishing Configuration PDI from FRU device D-Bus Interface.
 
 ### Structure for EM configs for NSM with examples to follow
+
 As of now NSM support following devices:
+
 ```
 typedef enum {
 	NSM_DEV_ID_GPU = 0,
@@ -241,10 +263,12 @@ typedef enum {
 	NSM_DEV_ID_UNKNOWN = 0xff,
 } NsmDeviceIdentification;
 ```
-- Now based on MCTP discovery, for MCTP endpoints which are NSM endpoints, NSM service will create a fruDevice object for each instance of device found.
-- We fire a few nsmd commands for FRU and inventory details for the device. We then expose properties required for EM configuration on the PDI.
+
+* Now based on MCTP discovery, for MCTP endpoints which are NSM endpoints, NSM service will create a fruDevice object for each instance of device found.
+* We fire a few nsmd commands for FRU and inventory details for the device. We then expose properties required for EM configuration on the PDI.
 
 e.g.
+
 ```
 :# busctl tree xyz.openbmc_project.NSM
 `-/xyz
@@ -271,9 +295,10 @@ xyz.openbmc_project.FruDevice       interface -         -                       
 .UUID                               property  s         "c13e2b99-68e4-45f1-8686-409009062aa8" emits-change
 ```
 
-- As we can see CX7 was identified, we created object /xyz/openbmc_project/FruDevice/31 and interface “xyz.openbmc_project.FruDevice” , exposing UUID, DEVICE_TYPE, INTANCE_NUMBER etc on fru device interface.
+* As we can see CX7 was identified, we created object /xyz/openbmc_project/FruDevice/31 and interface “xyz.openbmc_project. FruDevice” , exposing UUID, DEVICE_TYPE, INTANCE_NUMBER etc on fru device interface.
 
 #### PCIE BRIDGE DEVICE EM config
+
 Here is the basic example for the device pcie bridge EM json. It also contains sensors to be assumed by pldm type 2.
 
 ```
@@ -327,9 +352,10 @@ Here is the basic example for the device pcie bridge EM json. It also contains s
         }
      },
 ```
-- As soon as the probe gets true , we expose 1 sensor here, for cx7 software inventory related to the driver version.
-- “Why UUID”: This uuid will be passed on from fru interface on device objects in NSM. It is required because UUID will be used to uniquely identify the EID/device we are running the nsmd command for. EID is not unique , may change across restarts, after dropping from mctp network and rediscover  etc.
-- “Significance of Priority” -  It reflects that the sensor is dynamic. Needto be updated in polling coroutine. Now it has value true, its put in priority sensor list, if its false it is put in round robin list.
+
+* As soon as the probe gets true , we expose 1 sensor here, for cx7 software inventory related to the driver version.
+* “Why UUID”: This uuid will be passed on from fru interface on device objects in NSM. It is required because UUID will be used to uniquely identify the EID/device we are running the nsmd command for. EID is not unique , may change across restarts, after dropping from mctp network and rediscover  etc.
+* “Significance of Priority” -  It reflects that the sensor is dynamic. Needto be updated in polling coroutine. Now it has value true, its put in priority sensor list, if its false it is put in round robin list.
 
 On Entity Manager we have:
 
@@ -360,8 +386,8 @@ xyz.openbmc_project.Configuration.NSM_NVLinkManagementSWInventory interface -   
 ```
 
 After NSMD consumes it:
-- It creates /xyz/openbmc_project/inventory_software/HGX_Driver_NVLinkManagementNIC_0 object path which contains sensor information for driver version.
-- It is kept in priority round robin polling loop because priority property was false in EM config.
+* It creates /xyz/openbmc_project/inventory_software/HGX_Driver_NVLinkManagementNIC_0 object path which contains sensor information for driver version.
+* It is kept in priority round robin polling loop because priority property was false in EM config.
 
 ```
 `-/xyz
@@ -421,7 +447,6 @@ This is the general pattern we follow for sensor creation. For nsmd we are assum
 
 #### GB100 DEVICE EM config
 
-
 ```
 {
         "Exposes": [
@@ -460,8 +485,8 @@ This is the general pattern we follow for sensor creation. For nsmd we are assum
     }
 ```
 
-- Here we handle both scenario whether we want to index gpu from 0 or 1 .
-- For hgxb it is 1 based.
+* Here we handle both scenario whether we want to index gpu from 0 or 1 .
+* For hgxb it is 1 based.
 
 ```
 root@umbriel:/usr/share/entity-manager/configurations# busctl tree xyz.openbmc_project.EntityManager
@@ -514,14 +539,14 @@ xyz.openbmc_project.Configuration.NSM_Processor.MIGMode           interface -   
 .UUID                                                             property  s         "c13e2b99-68e4-45f1-8686-409009062aa8"   emits-change
 ```
 
-- Now if we compare EM config and the results we can see that main configuration PDI is "xyz.openbmc_project.Configuration.NSM_Processor".
-- ECCMode, MIGMode which are created in sub blocks of EM json. here are created as kind of secondary PDI's, e.g. "xyz.openbmc_project.Configuration.NSM_Processor.ECCMode" etc.
+* Now if we compare EM config and the results we can see that main configuration PDI is "xyz.openbmc_project. Configuration. NSM_Processor".
+* ECCMode, MIGMode which are created in sub blocks of EM json. here are created as kind of secondary PDI's, e.g. "xyz.openbmc_project. Configuration. NSM_Processor. ECCMode" etc.
 
 #### PCIeRetimer DEVICE EM config
 
-- This is a special scenario. Retimer is not a device which is directly supported by nsmd. We get all its info from FPGA.
-- So here we tightly couple retimer with fpga EM json.
-- As soon as fpga is up we create all retimers supported.
+* This is a special scenario. Retimer is not a device which is directly supported by nsmd. We get all its info from FPGA.
+* So here we tightly couple retimer with fpga EM json.
+* As soon as fpga is up we create all retimers supported.
 
 ```
 {
@@ -670,10 +695,11 @@ xyz.openbmc_project.Configuration.NSM_Processor.MIGMode           interface -   
     }
 ```
 
-- Each retimer has type "NSM_PCIeRetimer".
-- the advantage of this is future exposes on all pcieretimer now can we done wirth single json block.
+* Each retimer has type "NSM_PCIeRetimer".
+* the advantage of this is future exposes on all pcieretimer now can we done wirth single json block.
 
 e.g. Look at the probe, it gets true for all retimer devices.
+
 ```
 {
         "Exposes": [
@@ -701,7 +727,8 @@ e.g. Look at the probe, it gets true for all retimer devices.
 ```
 
 #### HSC Device
-- Device for which no chassis schema is applicable.
+
+* Device for which no chassis schema is applicable.
 
 ```
 {
@@ -774,8 +801,8 @@ e.g. Look at the probe, it gets true for all retimer devices.
 
 #### NSM Event Configs
 
-- json blocks are of 2 types
-- applicable for all message types for each device.
+* json blocks are of 2 types
+* applicable for all message types for each device.
 
 ```
  {
@@ -786,7 +813,7 @@ e.g. Look at the probe, it gets true for all retimer devices.
          },
 ```
 
-- applicable for each messgae type for each device.
+* applicable for each messgae type for each device.
 
 ```
 {
@@ -808,9 +835,11 @@ e.g. Look at the probe, it gets true for all retimer devices.
 For detaisl can be found in events block of this document.
 
 ### List of Configuration PDIs of nsmd
+
 TODO - All Configuration PDIs with their application and type and description of each of its property are to be added in this section.
 
 #### Nvlink Port Configuration in EM Json
+
 1. To create required number of links of type "Name", add below mentioned configuration in EM json.
 
 | Configuration Property 	| type   	| Description                                          	            |
@@ -824,6 +853,7 @@ TODO - All Configuration PDIs with their application and type and description of
 | Count                  	| int    	| The total port count on the device.<br>example: if Count=4 and Name="NVPort", then four dbus objects will be created.<br>/xyz/openbmc_project/.../Ports/NVPort_0<br>/xyz/openbmc_project/.../Ports/NVPort_1<br>/xyz/openbmc_project/.../Ports/NVPort_2<br>/xyz/openbmc_project/.../Ports/NVPort_3 	|
 
 Example json snippet:
+
 ```
     {
         "Name": "NVLinkManagement",
@@ -835,13 +865,23 @@ Example json snippet:
         "Count": 2
     }
 ```
+
 2. To add topology details on the created dbus port objects, there is a python script which generates the EM json from a mapping excel sheet.
 More details are added in nsmd repo (nsmd/tools/topology/Readme.md).
 
 3. To have correlation/association with available sensors in PLDM (in case of NVSwitches & NetworkAdapters) and NSM device EM json configuration is to be added for each sensor Id in PLDM providing the auxillary name and other EM config derived details.
 More details are added in nsmd repo (nsmd/tools/correlation/Readme.md).
 
+```mermaid
+graph TD
+  A-->B
+  A-->C
+  B-->D
+  C-->D
+```
+
 ### Steps to enable nsmd for a specific platform
+
 To enable nsmd for a Platform, please follow steps given below.
 
 1. Include nsmd as distro dependency for the Platform.
@@ -849,6 +889,7 @@ To enable nsmd for a Platform, please follow steps given below.
 3. Provide Platform specific settings like request timeouts, number of retries etc, by using Meson Options (nsmd uses Meson build system). Use EXTRA_OEMESON variable from meson bbclass to provide non-default values for these settings. Refer meson_options.txt file at nsmd repo for list of all available configuration options.
 
 ## Reference
+
 1. https://www.dmtf.org/sites/default/files/standards/documents/DSP0257_1.0.1_0.pdf
 
 2. https://www.dmtf.org/sites/default/files/standards/documents/DSP0236_1.3.0.pdf
