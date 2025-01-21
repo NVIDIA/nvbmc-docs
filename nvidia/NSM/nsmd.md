@@ -69,9 +69,9 @@ The nsmd service can discover NSM endpoint, gather telemetry data from the endpo
    └──┬───┘                                                                              │  daemon   │     └─────┬──────┘
       │                                                                                  └────┬──────┘           │       
       │                                                                                      ┌┤ EID enumerated   │       
-      │                                                  xyz.openbmc_project.MCTP.Endpoint   ││ or start to support NSM  
-      │                                           interfaceAdded or PropertiesChanged signal ││                  │       
-      │                                                "Enabled=true","msgType(0x7E) is add" ││                  │       
+      │                                                                                      ││ or start to support NSM  
+      │                                         interfacesAdded or PropertiesChanged signal  ││                  │       
+      │                                      xyz.openbmc_project.MCTP.Endpoint,Enabled=true  ││                  │       
      ┌┤  ◄───────────────────────────────────────────────────────────────────────────────────┴┤                  │       
      ││1.check if EID support message type 0x7E                                               │                  │       
      ││2.send queryDeviceIdentification                                                       │                  │       
@@ -86,9 +86,9 @@ The nsmd service can discover NSM endpoint, gather telemetry data from the endpo
    │ nsmd │                                                                              │ mctp-ctrl │     │ NSM Device │
    └──┬───┘                                                                              │  daemon   │     └─────┬──────┘
       │                                                                                  └────┬──────┘           │       
-      │                                                xyz.openbmc_project.MCTP.Endpoint     ┌┤ detect EID       │       
-      │                                                    propertiesChanged signal          ││ offline          │       
-      │                                            Enabled=false or msgType(0x7E) is removed ││                  │       
+      │                                                                                      ┌┤ detect EID       │       
+      │                                                            propertiesChanged signal  ││ offline          │       
+      │                                     xyz.openbmc_project.MCTP.Endpoint,Enabled=false  ││                  │       
      ┌┤ ◄────────────────────────────────────────────────────────────────────────────────────┴┤                  │       
      ││ search nsmDevice by EID and set isActive to false                                     │                  │       
      ││ update DiscoveredEIDs table to set EID offline                                        │                  │       
@@ -120,7 +120,7 @@ The nsmd service can discover NSM endpoint, gather telemetry data from the endpo
 │    ││   update PDI                 ◄────────────────────────────────────────────────────────┼────────────────  │       
 │    ││ }                                                                                     │                  │       
 │    └┤ sleep                                                                                 │                  │       
-└─────┘                                                                                                                  
+└─────┤                                                                                                                  
 ```
 
 ### nsmd instanceNumber remapping
@@ -172,7 +172,7 @@ The nsmd service can discover NSM endpoint, gather telemetry data from the endpo
          ┌────────────────────┴───────────────────┐
          │  NSMD                                  │
          │ ┌──────────┐ ┌──────────┐┌──────────┐  │
-         │ │coroutine1│ │coroutine1││coroutine1│  │
+         │ │coroutine1│ │coroutine2││coroutine3│  │
          │ └──────────┘ └──────────┘└──────────┘  │
          │                                        │
          └──────┬───────────┬────────────┬────────┘
@@ -230,7 +230,7 @@ List of Properties of FRU Device PDI created by nsmd. The list is not exhaustive
 
 FruDevice D-Bus object (for exposition purpose only)
 
-```
+```text
 root@e4869:~# busctl introspect xyz.openbmc_project.NSM /xyz/openbmc_project/FruDevice/30
 NAME                                TYPE      SIGNATURE RESULT/VALUE         FLAGS
 xyz.openbmc_project.FruDevice       interface -         -                    -
@@ -254,7 +254,7 @@ However, nsmd doesn't create Configuration PDIs itself and rely on Entity Manage
 
 As of now NSM support following devices:
 
-```
+```text
 typedef enum {
 	NSM_DEV_ID_GPU = 0,
 	NSM_DEV_ID_SWITCH = 1,
@@ -269,7 +269,7 @@ typedef enum {
 
 e.g.
 
-```
+```text
 :# busctl tree xyz.openbmc_project.NSM
 `-/xyz
   `-/xyz/openbmc_project
@@ -301,7 +301,7 @@ xyz.openbmc_project.FruDevice       interface -         -                       
 
 Here is the basic example for the device pcie bridge EM json. It also contains sensors to be assumed by pldm type 2.
 
-```
+```text
 {
         "Exposes": [
             {
@@ -355,11 +355,11 @@ Here is the basic example for the device pcie bridge EM json. It also contains s
 
 * As soon as the probe gets true , we expose 1 sensor here, for cx7 software inventory related to the driver version.
 * “Why UUID”: This uuid will be passed on from fru interface on device objects in NSM. It is required because UUID will be used to uniquely identify the EID/device we are running the nsmd command for. EID is not unique , may change across restarts, after dropping from mctp network and rediscover  etc.
-* “Significance of Priority” -  It reflects that the sensor is dynamic. Needto be updated in polling coroutine. Now it has value true, its put in priority sensor list, if its false it is put in round robin list.
+* “Significance of Priority” -  It reflects that the sensor is dynamic. Need to be updated in polling coroutine. Now it has value true, its put in priority sensor list, if its false it is put in round robin list.
 
 On Entity Manager we have:
 
-```
+```text
 `-/xyz/openbmc_project/inventory/system/networkadapters
           `-/xyz/openbmc_project/inventory/system/networkadapters/NVLinkManagementNIC_0
 |-/xyz/openbmc_project/inventory/system/networkadapters/NVLinkManagementNIC_0/HGX_Driver_NVLinkManagementNIC_0
@@ -389,7 +389,7 @@ After NSMD consumes it:
 * It creates /xyz/openbmc_project/inventory_software/HGX_Driver_NVLinkManagementNIC_0 object path which contains sensor information for driver version.
 * It is kept in priority round robin polling loop because priority property was false in EM config.
 
-```
+```text
 `-/xyz
   `-/xyz/openbmc_project
     |-/xyz/openbmc_project/FruDevice
@@ -398,7 +398,7 @@ After NSMD consumes it:
       `-/xyz/openbmc_project/inventory_software/HGX_Driver_NVLinkManagementNIC_0
 ```
 
-```
+```text
 root@umbriel:~# busctl introspect xyz.openbmc_project.NSM /xyz/openbmc_project/inventory_software/HGX_Driver_NVLinkManagementNIC_0
 NAME                                                  TYPE      SIGNATURE RESULT/VALUE                             FLAGS
 org.freedesktop.DBus.Introspectable                   interface -         -                                        -
@@ -434,7 +434,7 @@ xyz.openbmc_project.State.Decorator.OperationalStatus interface -         -     
 
 This is the general pattern we follow for sensor creation. For nsmd we are assuming everything as a sensor.
 
-```
+```text
 |                              STATIC SENSORS                                    |               DYNAMIC SENSORS             |
 |--------------------------------------------------------------------------------|-------------------------------------------|
 | No nsm command trigger required.   |   NSM command need to be triggered once.  |    Priority           |     Round Robin   |
@@ -447,7 +447,7 @@ This is the general pattern we follow for sensor creation. For nsmd we are assum
 
 #### GB100 DEVICE EM config
 
-```
+```text
 {
         "Exposes": [
             {
@@ -488,7 +488,7 @@ This is the general pattern we follow for sensor creation. For nsmd we are assum
 * Here we handle both scenario whether we want to index gpu from 0 or 1 .
 * For hgxb it is 1 based.
 
-```
+```text
 root@umbriel:/usr/share/entity-manager/configurations# busctl tree xyz.openbmc_project.EntityManager
 `- /xyz
 `- /xyz/openbmc_project
@@ -503,7 +503,7 @@ root@umbriel:/usr/share/entity-manager/configurations# busctl tree xyz.openbmc_p
 `- /xyz/openbmc_project/inventory/system/processor/GPU_1/GPU_1_Processor
 ```
 
-```
+```text
 root@umbriel:/usr/share/entity-manager/configurations# busctl introspect xyz.openbmc_project.EntityManager /xyz/openbmc_project/inventory/system/processor/GPU_1/GPU_1_Processor
 NAME                                                              TYPE      SIGNATURE RESULT/VALUE                             FLAGS
 org.freedesktop.DBus.Introspectable                               interface -         -                                        -
@@ -813,7 +813,7 @@ e.g. Look at the probe, it gets true for all retimer devices.
          },
 ```
 
-* applicable for each messgae type for each device.
+* applicable for each message type for each device.
 
 ```
 {
@@ -869,16 +869,8 @@ Example json snippet:
 2. To add topology details on the created dbus port objects, there is a python script which generates the EM json from a mapping excel sheet.
 More details are added in nsmd repo (nsmd/tools/topology/Readme.md).
 
-3. To have correlation/association with available sensors in PLDM (in case of NVSwitches & NetworkAdapters) and NSM device EM json configuration is to be added for each sensor Id in PLDM providing the auxillary name and other EM config derived details.
+3. To have correlation/association with available sensors in PLDM (in case of NVSwitches & NetworkAdapters) and NSM device EM json configuration is to be added for each sensor Id in PLDM providing the auxiliary name and other EM config derived details.
 More details are added in nsmd repo (nsmd/tools/correlation/Readme.md).
-
-```mermaid
-graph TD
-  A-->B
-  A-->C
-  B-->D
-  C-->D
-```
 
 ### Steps to enable nsmd for a specific platform
 
