@@ -1,19 +1,23 @@
 # nsmd - Nvidia System Management Daemon
 
-Authors:
- Gilbert Chen (gilbertc@nvidia.com)
- Harshit Aghera (haghera@nvidia.com)
- Rajat Jain (rajatj@nvidia.com)
- Aishwary Joshi (aishwaryj@nvidia.com)
- Utkarsh Yadav (uyadav@nvidia.com)
+Authors:  
+
+- Gilbert Chen (<gilbertc@nvidia.com>)
+- Harshit Aghera (<haghera@nvidia.com>)
+- Rajat Jain (<rajatj@nvidia.com>)
+- Aishwary Joshi (<aishwaryj@nvidia.com>)
+- Utkarsh Yadav (<uyadav@nvidia.com>)
+- Pawel Iwaneczko (<piwaneczko@nvidia.com>)
 
 Primary assignee:
- Harshit Aghera (haghera@nvidia.com)
 
-Reviewers:
- Deepak Kodihalli (dkodihalli@nvidia.com)
- Shakeeb Pasha (spasha@nvidia.com)
- Gilbert Chen (gilbertc@nvidia.com)
+- Harshit Aghera (<haghera@nvidia.com>)
+
+Reviewers:  
+
+- Deepak Kodihalli (<dkodihalli@nvidia.com>)
+- Shakeeb Pasha (<spasha@nvidia.com>)
+- Gilbert Chen (<gilbertc@nvidia.com>)
 
 ## Capabilities
 
@@ -195,9 +199,143 @@ MCTP over PCIe  │  ▲        │  ▲         │  ▲
 
 ## Design
 
+### **Sensors Insertion to Avoid Duplication**  
+
+To prevent duplicate sensor creation and ensure received data is propagated correctly to multiple PDI paths, use `NsmInterfaceContainer<IntfType>` instead of defining a PDI as a direct class member. This approach helps maintain structured and efficient sensor management.  
+
+#### **When to Use `NsmGroupSensor` vs. `NsmInterfaceContainer`**  
+
+- **Use `NsmInterfaceContainer`** when a sensor's data should be sent and received only once, but the decoded result needs to be propagated to multiple PDI paths. This ensures that a single sensor instance efficiently updates all relevant interfaces without redundant communication.  
+
+- **Use `NsmGroupSensor`** as an additional abstraction layer over `NsmInterfaceContainer` when multiple `NsmSubSensor` instances need to handle the same received data differently. While `NsmInterfaceContainer` ensures that data is shared across PDIs, `NsmGroupSensor` calls `handleResponse` for each `NsmSubSensor`, allowing them to process the data in a specific way. This is useful in cases where differentiation is needed, such as handling GPU instance IDs within a shared response.
+
+#### Class Diagrams
+
+- Core Sensor Structure:
+
+```mermaid
+classDiagram
+direction TB
+
+    class NsmDevice { 
+        + addStaticSensor(sensor: std::shared_ptr[SensorType]&) void
+        + addSensor(sensor: std::shared_ptr[SensorType]&, priority: bool, isLongRunning: bool) void
+        - addSensorBase(sensor: std::shared_ptr[NsmObject]&, priority: bool, isLongRunning: bool) void
+    }
+
+    class NsmSensor { 
+        + NsmSensor(name: std::string, type: std::string)
+        + NsmSensor(copy: NsmObject)
+        + genRequestMsg(eid: eid_t, instanceId: uint8_t) std::optional[Request] virtual = 0
+        + handleResponseMsg(responseMsg: const nsm_msg*, responseLen: size_t) uint8_t virtual = 0
+        + update(manager: SensorManager&, eid: eid_t) requester::Coroutine virtual
+        + equals(other: const NsmSensor&) bool virtual
+        + operator==(other: const NsmSensor&) bool
+    }
+
+    NsmDevice --> NsmSensor
+
+```
+
+- Interface Management:
+
+```mermaid
+classDiagram
+direction TB
+
+    class NsmInterfaces {
+        + using IntfType_t = IntfType
+        + using Interfaces = std::unordered_map[std::path, std::shared_ptr[IntfType]]
+        + interfaces: Interfaces
+        + pdi() IntfType&
+        + moveInterfaces(container: NsmInterfaces&) void
+    }
+
+    class NsmInterfacesContainer {
+        + NsmInterfaceContainer(provider: NsmInterfaceProvider)
+    }
+
+    class NsmInterfaceProvider {
+        + NsmInterfaceProvider(name: std::string, type: std::string, objectsPaths: dbus::Interfaces)
+        + createInterfaces(objectsPaths: dbus::Interfaces) Interfaces
+    }
+
+    NsmInterfaces <|-- NsmInterfaceProvider
+    NsmInterfaces <|-- NsmInterfacesContainer
+```
+
+- Group and Sub Sensors:
+
+```mermaid
+classDiagram
+direction TB
+
+    class NsmSubSensor {
+        + handleResponse(responseMsg: const nsm_msg*, responseLen: size_t) uint8_t virtual = 0
+    }
+
+    class NsmGroupSensor {
+        + sensors: std::vector[std::shared_ptr[NsmSubSensor]]
+        - handleResponseMsg(responseMsg: const nsm_msg*, responseLen: size_t) uint8_t override final
+    }
+
+    NsmSubSensor  <|-- NsmGroupSensor
+    NsmSensor  <|-- NsmGroupSensor
+```
+
+- Sensor Types and Specializations:
+
+```mermaid
+classDiagram
+direction TB
+
+    class GroupSensorType { 
+        + genRequestMsg(eid: eid_t, instanceId: uint8_t) std::optional[Request] override
+        + handleResponse(responseMsg: const nsm_msg*, responseLen: size_t) uint8_t override
+    }
+
+    class SensorType { 
+        + genRequestMsg(eid: eid_t, instanceId: uint8_t) std::optional[Request] override
+        + handleResponseMsg(responseMsg: const nsm_msg*, responseLen: size_t) uint8_t override
+    }
+
+    class NsmInventoryProperty
+    class NsmPCIeLinkSpeed
+    class NsmMemoryCapacityUtil
+    class NsmWriteProtectedControl
+    class NsmGpuPresenceAndPowerStatus
+    class NsmPowerSupplyStatus
+
+    NsmGroupSensor <|-- GroupSensorType 
+    NsmInterfacesContainer <|-- GroupSensorType 
+    NsmInterfacesContainer <|-- SensorType 
+    SensorType <|-- NsmInventoryProperty 
+    SensorType <|-- NsmPCIeLinkSpeed 
+    SensorType <|-- NsmMemoryCapacityUtil 
+    GroupSensorType <|-- NsmWriteProtectedControl 
+    GroupSensorType <|-- NsmGpuPresenceAndPowerStatus 
+    GroupSensorType <|-- NsmPowerSupplyStatus 
+```
+
+#### Flowchart diagram
+
+```mermaid
+flowchart TD
+    n1(["addSensor"]) --> n2["Find same objects by PDI, final class type, and request comparing"]
+    n2 --> n3{"Same sensor exists?"}
+    n3 -- No --> n5["addSensorBase"]
+    n5 --> n6(["Sensor added or inserted"])
+    n4["moveInterfaces"] --> n6
+    n3 -- Yes --> n7{"Is NsmGroupSensor"}
+    n7 -- No --> n4
+    n7 -- Yes --> n8["groupSensors"]
+    n8 --> n6
+```
+
 ## Interaction with other services and relevant D-Bus APIs
 
 nsmd interacts with other services listed below, using D-Bus IPC mechanism. In OpenBMC framework D-Bus Interfaces sometimes are referred as Phosphor D-Bus Interfaces (or PDI for short), and hence both the terms are used interchangeably in this document.
+
 1. MCTP demux and control daemons
 2. Entity Manager
 3. PLDM daemon
@@ -218,13 +356,13 @@ nsmd uses D-Bus IPC service, to publish information for each device endpoints th
 
 List of Properties of FRU Device PDI created by nsmd. The list is not exhaustive.
 
-| Property               	| Type   	| Mandatory/Optional | NSM Command used to get Value            | Use                         |
-|--------------------------	|----------	|------------------- |----------------------------------------- | --------------------------- |
-| BOARD_PART_NUMBER       	| string 	| Mandatory          | Type 3 Get Inventory Information (0x11)  | For debugability.           |
-| DEVICE_TYPE            	| byte  	| Mandatory          | Type 0 Query Device Identification (0x09)| To determine list of inventories to be published. |
-| INSTANCE_NUMBER          	| byte   	| Mandatory          | Type 0 Query Device Identification (0x09)| To determine list of inventories to be published. |
-| SERIAL_NUMBER            	| string   	| Mandatory          | Type 3 Get Inventory Information (0x11)  | For debugability.           |
-| UUID                  	| string   	| Mandatory          | NA (Populated by MCTP Control Daemon)    | To uniquely identify a device and EID lookup.     |
+| Property                | Type    | Mandatory/Optional | NSM Command used to get Value            | Use                         |
+|-------------------------- |---------- |------------------- |----------------------------------------- | --------------------------- |
+| BOARD_PART_NUMBER        | string  | Mandatory          | Type 3 Get Inventory Information (0x11)  | For debugability.           |
+| DEVICE_TYPE             | byte   | Mandatory          | Type 0 Query Device Identification (0x09)| To determine list of inventories to be published. |
+| INSTANCE_NUMBER           | byte    | Mandatory          | Type 0 Query Device Identification (0x09)| To determine list of inventories to be published. |
+| SERIAL_NUMBER             | string    | Mandatory          | Type 3 Get Inventory Information (0x11)  | For debugability.           |
+| UUID                   | string    | Mandatory          | NA (Populated by MCTP Control Daemon)    | To uniquely identify a device and EID lookup.     |
 
 #### Example 1
 
@@ -256,16 +394,16 @@ As of now NSM support following devices:
 
 ```text
 typedef enum {
-	NSM_DEV_ID_GPU = 0,
-	NSM_DEV_ID_SWITCH = 1,
-	NSM_DEV_ID_PCIE_BRIDGE = 2,
-	NSM_DEV_ID_BASEBOARD = 3,
-	NSM_DEV_ID_UNKNOWN = 0xff,
+ NSM_DEV_ID_GPU = 0,
+ NSM_DEV_ID_SWITCH = 1,
+ NSM_DEV_ID_PCIE_BRIDGE = 2,
+ NSM_DEV_ID_BASEBOARD = 3,
+ NSM_DEV_ID_UNKNOWN = 0xff,
 } NsmDeviceIdentification;
 ```
 
-* Now based on MCTP discovery, for MCTP endpoints which are NSM endpoints, NSM service will create a fruDevice object for each instance of device found.
-* We fire a few nsmd commands for FRU and inventory details for the device. We then expose properties required for EM configuration on the PDI.
+- Now based on MCTP discovery, for MCTP endpoints which are NSM endpoints, NSM service will create a fruDevice object for each instance of device found.
+- We fire a few nsmd commands for FRU and inventory details for the device. We then expose properties required for EM configuration on the PDI.
 
 e.g.
 
@@ -295,7 +433,7 @@ xyz.openbmc_project.FruDevice       interface -         -                       
 .UUID                               property  s         "c13e2b99-68e4-45f1-8686-409009062aa8" emits-change
 ```
 
-* As we can see CX7 was identified, we created object /xyz/openbmc_project/FruDevice/31 and interface “xyz.openbmc_project. FruDevice” , exposing UUID, DEVICE_TYPE, INTANCE_NUMBER etc on fru device interface.
+- As we can see CX7 was identified, we created object /xyz/openbmc_project/FruDevice/31 and interface “xyz.openbmc_project. FruDevice” , exposing UUID, DEVICE_TYPE, INTANCE_NUMBER etc on fru device interface.
 
 #### PCIE BRIDGE DEVICE EM config
 
@@ -353,9 +491,9 @@ Here is the basic example for the device pcie bridge EM json. It also contains s
      },
 ```
 
-* As soon as the probe gets true , we expose 1 sensor here, for cx7 software inventory related to the driver version.
-* “Why UUID”: This uuid will be passed on from fru interface on device objects in NSM. It is required because UUID will be used to uniquely identify the EID/device we are running the nsmd command for. EID is not unique , may change across restarts, after dropping from mctp network and rediscover  etc.
-* “Significance of Priority” -  It reflects that the sensor is dynamic. Need to be updated in polling coroutine. Now it has value true, its put in priority sensor list, if its false it is put in round robin list.
+- As soon as the probe gets true , we expose 1 sensor here, for cx7 software inventory related to the driver version.
+- “Why UUID”: This uuid will be passed on from fru interface on device objects in NSM. It is required because UUID will be used to uniquely identify the EID/device we are running the nsmd command for. EID is not unique , may change across restarts, after dropping from mctp network and rediscover  etc.
+- “Significance of Priority” -  It reflects that the sensor is dynamic. Need to be updated in polling coroutine. Now it has value true, its put in priority sensor list, if its false it is put in round robin list.
 
 On Entity Manager we have:
 
@@ -386,8 +524,8 @@ xyz.openbmc_project.Configuration.NSM_NVLinkManagementSWInventory interface -   
 ```
 
 After NSMD consumes it:
-* It creates /xyz/openbmc_project/inventory_software/HGX_Driver_NVLinkManagementNIC_0 object path which contains sensor information for driver version.
-* It is kept in priority round robin polling loop because priority property was false in EM config.
+- It creates /xyz/openbmc_project/inventory_software/HGX_Driver_NVLinkManagementNIC_0 object path which contains sensor information for driver version.
+- It is kept in priority round robin polling loop because priority property was false in EM config.
 
 ```text
 `-/xyz
@@ -485,8 +623,8 @@ This is the general pattern we follow for sensor creation. For nsmd we are assum
     }
 ```
 
-* Here we handle both scenario whether we want to index gpu from 0 or 1 .
-* For hgxb it is 1 based.
+- Here we handle both scenario whether we want to index gpu from 0 or 1 .
+- For hgxb it is 1 based.
 
 ```text
 root@umbriel:/usr/share/entity-manager/configurations# busctl tree xyz.openbmc_project.EntityManager
@@ -539,14 +677,14 @@ xyz.openbmc_project.Configuration.NSM_Processor.MIGMode           interface -   
 .UUID                                                             property  s         "c13e2b99-68e4-45f1-8686-409009062aa8"   emits-change
 ```
 
-* Now if we compare EM config and the results we can see that main configuration PDI is "xyz.openbmc_project. Configuration. NSM_Processor".
-* ECCMode, MIGMode which are created in sub blocks of EM json. here are created as kind of secondary PDI's, e.g. "xyz.openbmc_project. Configuration. NSM_Processor. ECCMode" etc.
+- Now if we compare EM config and the results we can see that main configuration PDI is "xyz.openbmc_project. Configuration. NSM_Processor".
+- ECCMode, MIGMode which are created in sub blocks of EM json. here are created as kind of secondary PDI's, e.g. "xyz.openbmc_project. Configuration. NSM_Processor. ECCMode" etc.
 
 #### PCIeRetimer DEVICE EM config
 
-* This is a special scenario. Retimer is not a device which is directly supported by nsmd. We get all its info from FPGA.
-* So here we tightly couple retimer with fpga EM json.
-* As soon as fpga is up we create all retimers supported.
+- This is a special scenario. Retimer is not a device which is directly supported by nsmd. We get all its info from FPGA.
+- So here we tightly couple retimer with fpga EM json.
+- As soon as fpga is up we create all retimers supported.
 
 ```
 {
@@ -695,8 +833,8 @@ xyz.openbmc_project.Configuration.NSM_Processor.MIGMode           interface -   
     }
 ```
 
-* Each retimer has type "NSM_PCIeRetimer".
-* the advantage of this is future exposes on all pcieretimer now can we done wirth single json block.
+- Each retimer has type "NSM_PCIeRetimer".
+- the advantage of this is future exposes on all pcieretimer now can we done wirth single json block.
 
 e.g. Look at the probe, it gets true for all retimer devices.
 
@@ -728,7 +866,7 @@ e.g. Look at the probe, it gets true for all retimer devices.
 
 #### HSC Device
 
-* Device for which no chassis schema is applicable.
+- Device for which no chassis schema is applicable.
 
 ```
 {
@@ -801,8 +939,8 @@ e.g. Look at the probe, it gets true for all retimer devices.
 
 #### NSM Event Configs
 
-* json blocks are of 2 types
-* applicable for all message types for each device.
+- json blocks are of 2 types
+- applicable for all message types for each device.
 
 ```
  {
@@ -813,7 +951,7 @@ e.g. Look at the probe, it gets true for all retimer devices.
          },
 ```
 
-* applicable for each message type for each device.
+- applicable for each message type for each device.
 
 ```
 {
@@ -842,15 +980,15 @@ TODO - All Configuration PDIs with their application and type and description of
 
 1. To create required number of links of type "Name", add below mentioned configuration in EM json.
 
-| Configuration Property 	| type   	| Description                                          	            |
-|------------------------	|--------	|-----------------------------------------------------------------	|
-| Type                   	| string 	| NSM_NVLink                                                        |
-| Name                   	| string 	| Name for EM dbus object, which is also used as port dbus object name prefix.           	|
-| ParentObjPath            	| string 	| Dbus object path of the device on which the port objects will be created.                	|
-| DeviceType                | int    	| Device type as per defination in NsmDeviceIdentification enum defined above.              |
-| UUID                      | string  	| UUID of the device.                                               |
+| Configuration Property  | type    | Description                                                       |
+|------------------------ |-------- |----------------------------------------------------------------- |
+| Type                    | string  | NSM_NVLink                                                        |
+| Name                    | string  | Name for EM dbus object, which is also used as port dbus object name prefix.            |
+| ParentObjPath             | string  | Dbus object path of the device on which the port objects will be created.                 |
+| DeviceType                | int     | Device type as per defination in NsmDeviceIdentification enum defined above.              |
+| UUID                      | string   | UUID of the device.                                               |
 | Priority                  | boolean   | Priority to indicate which queue to add the created sensor for polling.                   |
-| Count                  	| int    	| The total port count on the device.<br>example: if Count=4 and Name="NVPort", then four dbus objects will be created.<br>/xyz/openbmc_project/.../Ports/NVPort_0<br>/xyz/openbmc_project/.../Ports/NVPort_1<br>/xyz/openbmc_project/.../Ports/NVPort_2<br>/xyz/openbmc_project/.../Ports/NVPort_3 	|
+| Count                   | int     | The total port count on the device.<br>example: if Count=4 and Name="NVPort", then four dbus objects will be created.<br>/xyz/openbmc_project/.../Ports/NVPort_0<br>/xyz/openbmc_project/.../Ports/NVPort_1<br>/xyz/openbmc_project/.../Ports/NVPort_2<br>/xyz/openbmc_project/.../Ports/NVPort_3  |
 
 Example json snippet:
 
@@ -882,8 +1020,8 @@ To enable nsmd for a Platform, please follow steps given below.
 
 ## Reference
 
-1. https://www.dmtf.org/sites/default/files/standards/documents/DSP0257_1.0.1_0.pdf
+1. <https://www.dmtf.org/sites/default/files/standards/documents/DSP0257_1.0.1_0.pdf>
 
-2. https://www.dmtf.org/sites/default/files/standards/documents/DSP0236_1.3.0.pdf
+2. <https://www.dmtf.org/sites/default/files/standards/documents/DSP0236_1.3.0.pdf>
 
-3. https://www.dmtf.org/sites/default/files/standards/documents/DSP0249_1.1.0.pdf
+3. <https://www.dmtf.org/sites/default/files/standards/documents/DSP0249_1.1.0.pdf>
