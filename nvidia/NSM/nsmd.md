@@ -197,6 +197,155 @@ MCTP over PCIe  │  ▲        │  ▲         │  ▲
               └───────┘    └──────┘    └───────┘
 ```
 
+### Event Loop Responsibilities in NSMD Service
+
+The NSMD event loop (based on `sdeventplus::Event`) handles the following specific tasks:
+
+1. **MCTP Socket Communication:**
+   - Handles incoming MCTP messages through socket file descriptors
+   - Manages socket connections and disconnections
+   - Processes VDM (0x7e) message type registrations
+
+2. **DBus Interface Management:**
+   - Monitors for new interface additions
+   - Handles interface registration and object creation
+   - Manages DBus object paths and service names
+
+3. **Coroutine Management:**
+   - Resumes suspended coroutines
+   - Manages coroutine semaphores
+   - Handles coroutine scheduling and prioritization
+   - Manages timer-based coroutine operations
+   - Controls sleep/wake cycles for coroutines
+   - Handles request retry timeouts
+
+4. **DBus Property Operations:**
+   - Handles DBus property operations (get/set)
+   - Manages property notifications and updates
+   - Processes DBus method calls and responses
+   - Handles DBus errors and timeouts
+
+5. **Event Type Handlers:**
+   - Processes Event Type 0 handlers
+   - Processes Event Type 1 handlers
+   - Processes Event Type 3 handlers
+   - Manages long-running event responses
+   - Handles event acknowledgments
+
+6. **Resource Management:**
+   - Manages socket file descriptors
+   - Handles instance ID expiration
+   - Controls request queue management
+
+---
+
+```mermaid
+graph TD
+    A[Start Event Loop] --> B{Event Occurred?}
+    B -->|No| C[Wait or Sleep]
+    B -->|Yes| D[Identify Event Type]
+    D --> D1{Event Type}
+    D1 -->|MCTP Socket IO| E[Handle MCTP Socket Messages]
+    D1 -->|DBus Interface Added| F[Handle New Interface Registration]
+    D1 -->|Coroutine Resume| G[Handle Coroutine Operations]
+    D1 -->|DBus Property Operation| H[Handle DBus Property Operations]
+    D1 -->|Event Type Handlers| I[Process Event Type 0/1/3]
+    E --> J[Continue Event Loop]
+    F --> J
+    G --> J
+    H --> J
+    I --> J
+    J --> B
+```
+
+### Sensor polling loop
+
+The sensor polling loop implements a multi-tiered approach to manage sensor updates with different refresh rates and priorities:
+
+1. Priority sensors - Critical sensors requiring immediate updates
+2. GPM (GPU Performance Monitoring) sensors - Performance monitoring sensors with 1-second refresh rate
+3. Round-robin sensors - Non-critical sensors processed in a round-robin fashion
+4. Long-running sensors - Sensors that require extended processing time
+
+```mermaid
+graph TD
+    A[Start Polling] --> B{Device Active?}
+    B -->|No| C[Search EID]
+    C -->|Found| D[Set Device Active]
+    C -->|Not Found| E[Sleep & Retry]
+    D --> F[Get EID]
+    B -->|Yes| F
+    F --> G[Refresh Command Matrix]
+    G --> H[Set Polling State: Priority]
+    H --> I[Update Priority Sensors]
+    I --> J[Check GPM Time]
+    J -->|1s Elapsed| K[Update GPM Sensors]
+    J -->|Not Elapsed| L[Set Polling State: Non-Priority]
+    K --> L
+    L --> M[Update Round Robin Sensors]
+    
+    subgraph Priority Sensors
+        I --> I1[For each priority sensor]
+        I1 --> I2[Update sensor]
+        I2 --> I3[Next sensor]
+    end
+    
+    subgraph GPM Sensors
+        K --> K1[For each GPM sensor]
+        K1 --> K2[Update sensor]
+        K2 --> K3[Next sensor]
+    end
+    
+    subgraph Round Robin Sensors
+        M --> M1[Check time budget]
+        M1 --> M2{Time remaining?}
+        M2 -->|No| M3[End polling cycle]
+        M2 -->|Yes| M4[Get next sensor]
+        M4 --> M5{Needs update?}
+        M5 -->|No| M6[Skip & requeue]
+        M5 -->|Yes| M7[Update sensor]
+        M7 --> M8[Mark refreshed]
+        M8 --> M9[Requeue if needed]
+        M9 --> M1
+    end
+    
+    M3 --> N[Calculate sleep time]
+    N --> O{Sleep needed?}
+    O -->|Yes| P[Sleep]
+    O -->|No| B
+    P --> B
+```
+
+The polling loop implements several key features:
+
+1. **Device State Management**:
+   - Continuously monitors device active state
+   - Attempts to recover inactive devices by searching for their EID
+   - Updates device state based on EID availability
+
+2. **Priority-based Updates**:
+   - Priority sensors are updated first to ensure critical data is always current
+   - GPM sensors are updated when 1-second interval has elapsed since last update
+   - Round-robin sensors are processed within the remaining time budget
+
+3. **Time Management**:
+   - Tracks elapsed time during polling cycles
+   - Implements sleep intervals between polling cycles
+   - Uses buffer time to optimize polling frequency
+   - Maintains separate GPM time tracking for 1-second interval updates
+
+4. **Sensor State Tracking**:
+   - Maintains refresh state for each sensor
+   - Implements circular queue for round-robin sensors
+   - Tracks last update timestamps for GPM sensors
+
+5. **Error Handling**:
+   - Handles device disconnections gracefully
+   - Implements retry mechanisms for failed updates
+   - Maintains device readiness state
+
+The implementation ensures efficient resource utilization while maintaining data freshness for different types of sensors based on their priority and update requirements.
+
 ## Design
 
 ### **Sensors Insertion to Avoid Duplication**  
