@@ -79,3 +79,35 @@ The LLDP service will be implemented as a D-Bus service that manages both transm
    - This interface will store information received from neighboring devices
    - It will parse and store all received TLVs
    - The information will be available through the same TLV properties as the transmit interface
+
+
+
+## High-Level Architecture Diagram
+![](lldp_architecture.png)
+
+This design implements LLDP on the DPU BMC with the following key features: Customizable Profiles, Extended TLVs, LLDPD Transition, and Redfish Interface Updates. 
+The architecture utilizes a new D-Bus service to manage LLDP configuration and communication, providing a flexible and extensible solution while maintaining backward compatibility.
+
+
+## Redfish API
+![](lldp_flow_redfish.png)
+
+Provides a standardized RESTful interface for external management systems to configure and monitor LLDP. It interacts with the LLDP D-Bus service to translate Redfish commands to D-Bus calls. 
+  1.  A user or management system sends a Redfish command to configure LLDP (e.g., enable LLDP, set TLV values).
+  2.  The Redfish service translates the Redfish command into corresponding D-Bus calls to the LLDP D-Bus service.
+  3.  The LLDP D-Bus service processes the requests:
+      * For enabling/disabling LLDP, it controls the sending of LLDP packets.
+      * For setting TLV values, it updates the LLDP configuration file and restarts the lldpd daemon. 
+  4.  The lldpd daemon retrieves TLV information from the configuration file for inclusion in LLDP packets.
+
+## Profile API
+![](lldp_flow_profile_conf.png)
+
+A configuration mechanism within OpenBMC that allows users to define LLDP settings using flags. These flags (EnableLLDP, EnableLLDPExtensions, EnableHostSystemInfo) control LLDP behavior and the inclusion of extended TLVs. 
+  1.  A user or system pushes a profile to the OpenBMC, including flags to configure LLDP (EnableLLDP, EnableLLDPExtensions, EnableHostSystemInfo). 
+  2.  The LLDP D-Bus service receives the profile.
+  3.  Based on the EnableLLDP flag, the service enables or disables LLDP packet sending.
+  4.  If the EnableLLDPExtensions flag is enabled, the service retrieves relevant information (FRU data, network interface data, system information) and updates the LLDP configuration file.  
+      The lldpd daemon is restarted to apply the changes.
+  5.  If the EnableHostSystemInfo flag is also enabled, the service retrieves host server information and further updates the LLDP configuration file, restarting the lldpd daemon again. 
+  6.  The lldpd daemon retrieves the extended TLVs from the configuration file and includes them in LLDP packets.
