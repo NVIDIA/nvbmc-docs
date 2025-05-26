@@ -262,71 +262,18 @@ graph TD
 
 The sensor polling loop implements a multi-tiered approach to manage sensor updates with different refresh rates and priorities:
 
-1. Priority sensors - Critical sensors requiring immediate updates
-2. GPM (GPU Performance Monitoring) sensors - Performance monitoring sensors with 1-second refresh rate
-3. Round-robin sensors - Non-critical sensors processed in a round-robin fashion
-4. Long-running sensors - Sensors that require extended processing time
+1. **Priority Sensors**:
+   - Critical sensors requiring immediate updates
+   - Processed first in each polling cycle
+   - Updated regardless of time budget
 
-```mermaid
-graph TD
-    A[Start Polling] --> B{Device Active?}
-    B -->|No| C[Search EID]
-    C -->|Found| D[Set Device Active]
-    C -->|Not Found| E[Sleep & Retry]
-    D --> F[Get EID]
-    B -->|Yes| F
-    F --> G[Refresh Command Matrix]
-    G --> H[Set Polling State: Priority]
-    H --> I[Update Priority Sensors]
-    I --> J[Check GPM Time]
-    J -->|1s Elapsed| K[Update GPM Sensors]
-    J -->|Not Elapsed| L[Set Polling State: Non-Priority]
-    K --> L
-    L --> M[Update Round Robin Sensors]
-    
-    subgraph Priority Sensors
-        I --> I1[For each priority sensor]
-        I1 --> I2[Update sensor]
-        I2 --> I3[Next sensor]
-    end
-    
-    subgraph GPM Sensors
-        K --> K1[For each GPM sensor]
-        K1 --> K2[Update sensor]
-        K2 --> K3[Next sensor]
-    end
-    
-    subgraph Round Robin Sensors
-        M --> M1[Check time budget]
-        M1 --> M2{Time remaining?}
-        M2 -->|No| M3[End polling cycle]
-        M2 -->|Yes| M4[Get next sensor]
-        M4 --> M5{Needs update?}
-        M5 -->|No| M6[Skip & requeue]
-        M5 -->|Yes| M7[Update sensor]
-        M7 --> M8[Mark refreshed]
-        M8 --> M9[Requeue if needed]
-        M9 --> M1
-    end
-    
-    M3 --> N[Calculate sleep time]
-    N --> O{Sleep needed?}
-    O -->|Yes| P[Sleep]
-    O -->|No| B
-    P --> B
-```
-
-The polling loop implements several key features:
-
-1. **Device State Management**:
-   - Continuously monitors device active state
-   - Attempts to recover inactive devices by searching for their EID
-   - Updates device state based on EID availability
-
-2. **Priority-based Updates**:
-   - Priority sensors are updated first to ensure critical data is always current
-   - GPM sensors are updated when 1-second interval has elapsed since last update
-   - Round-robin sensors are processed within the remaining time budget
+2. **GPM & Round Robin Sensors**:
+   - GPM (GPU Performance Monitoring) sensors - Performance monitoring sensors with 1-second refresh rate
+   - Round-robin sensors - Non-critical sensors processed in a round-robin fashion
+   - Processed alternately (GPM ↔ RR) within available time budget
+   - GPM sensors are always requeued
+   - Round Robin sensors are only requeued if non-static
+   - Both types switch to other queue after processing
 
 3. **Time Management**:
    - Tracks elapsed time during polling cycles
@@ -334,17 +281,63 @@ The polling loop implements several key features:
    - Uses buffer time to optimize polling frequency
    - Maintains separate GPM time tracking for 1-second interval updates
 
-4. **Sensor State Tracking**:
-   - Maintains refresh state for each sensor
-   - Implements circular queue for round-robin sensors
-   - Tracks last update timestamps for GPM sensors
+4. **Device State Management**:
+   - Continuously monitors device active state
+   - Attempts to recover inactive devices by searching for their EID
+   - Updates device state based on EID availability
 
 5. **Error Handling**:
-   - Handles device disconnections gracefully
-   - Implements retry mechanisms for failed updates
-   - Maintains device readiness state
+   - Command matrix refresh failures are logged but don't stop polling
+   - Failed sensor updates are logged and sensors are requeued
+   - Device disconnections trigger EID search and state recovery
+   - Timeout handling through sleep intervals between retries
+   - Static sensors that fail to update are not requeued
 
-The implementation ensures efficient resource utilization while maintaining data freshness for different types of sensors based on their priority and update requirements.
+The flow ensures efficient resource utilization while maintaining data freshness for different types of sensors based on their priority and update requirements, with robust error handling to maintain system stability.
+
+```mermaid
+graph TD
+    A[Start Polling] --> B{Device Active?}
+    B -->|No| C[Search EID]
+    C -->|Found| D[Set Device Active & Update]
+    C -->|Not Found| E[Sleep & Retry]
+    D --> F[Get EID]
+    B -->|Yes| F
+    F --> G[Refresh Command Matrix]
+    G --> H[Set Polling State: Priority]
+    H --> I[Update Priority Sensors]
+    I --> J[Set Polling State: Non-Priority]
+    J --> K[Initialize Polling Type: GPM]
+    
+    subgraph Priority Sensors
+        I --> I1[For each priority sensor]
+        I1 --> I2[Update sensor]
+        I2 --> I3[Next sensor]
+    end
+    
+    subgraph GPM & Round Robin Sensors
+        K --> L{Time Budget Available? & Sensors in Queues?}
+        L -->|No| M[End Polling Cycle]
+        L -->|Yes| N{Needs Update?}
+        
+        N -->|No| O[Switch GPM↔RR]
+        N -->|Yes| P[Update Sensor]
+        P --> Q[Mark Refreshed]
+        Q --> R{Is GPM or Non-Static RR?}
+        R -->|Yes| S[Requeue Sensor]
+        R -->|No| T[Switch GPM↔RR]
+        
+        O --> L
+        S --> T
+        T --> L
+    end
+    
+    M --> W[Calculate Sleep Time]
+    W --> X{Sleep Needed?}
+    X -->|Yes| Y[Sleep]
+    X -->|No| B
+    Y --> B
+```
 
 ## Design
 
