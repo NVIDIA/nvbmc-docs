@@ -260,85 +260,268 @@ graph TD
 
 ### Sensor polling loop
 
-The sensor polling loop implements a multi-tiered approach to manage sensor updates with different refresh rates and priorities:
+#### Main Flow
+The main polling loop starts with the StartPolling event and proceeds through the following steps:
+1. Update NSMDevices event initialization
+2. Main polling loop execution
+3. Update NSM Devices and EIDs for all devices
+4. Update all priority sensors for all NsmDevices
+5. Time check to determine if state machine should continue
+6. State machine execution for non-priority sensors
+7. Check devices readiness after state machine completion
+8. Sleep for 20ms before next iteration
 
-1. **Priority Sensors**:
-   - Critical sensors requiring immediate updates
-   - Processed first in each polling cycle
-   - Updated regardless of time budget
+#### Update NSM Devices and EIDs
+This process handles device initialization and updates:
+1. List all currently available devices
+2. For each device:
+   - Check if device is active
+   - If not active, search for EID
+   - Update device if EID is found
+   - Refresh command matrix if device is active
+   - Move to next device
+3. Continue until all devices are processed
 
-2. **GPM & Round Robin Sensors**:
-   - GPM (GPU Performance Monitoring) sensors - Performance monitoring sensors with 1-second refresh rate
-   - Round-robin sensors - Non-critical sensors processed in a round-robin fashion
-   - Processed alternately (GPM ↔ RR) within available time budget
-   - GPM sensors are always requeued
-   - Round Robin sensors are only requeued if non-static
-   - Both types switch to other queue after processing
+#### State Machine
+The state machine handles non-priority sensor updates:
+1. Check if circular queue has sensors
+2. If sensors exist:
+   - Check if current sensor needs update
+   - Update sensor if needed
+   - Move circular iterator to next sensor
+3. Continue until time limit is reached
 
-3. **Time Management**:
-   - Tracks elapsed time during polling cycles
-   - Implements sleep intervals between polling cycles
-   - Uses buffer time to optimize polling frequency
-   - Maintains separate GPM time tracking for 1-second interval updates
+The polling state machine prioritizes sensor types based on update frequency and processing cost.
 
-4. **Device State Management**:
-   - Continuously monitors device active state
-   - Attempts to recover inactive devices by searching for their EID
-   - Updates device state based on EID availability
+#### Check Devices Readiness
+After all sensors are updated:
+1. Check device readiness state
+2. Update device state under either of the following conditions:
+  - Device is currently not ready (`!isDeviceReady`)
+  - Device qualifies for a readiness re-check (`isReadyForReadinessCheck`)
+3. Call checkAllDevicesReady when appropriate
 
-5. **Error Handling**:
-   - Command matrix refresh failures are logged but don't stop polling
-   - Failed sensor updates are logged and sensors are requeued
-   - Device disconnections trigger EID search and state recovery
-   - Timeout handling through sleep intervals between retries
-   - Static sensors that fail to update are not requeued
-
-The flow ensures efficient resource utilization while maintaining data freshness for different types of sensors based on their priority and update requirements, with robust error handling to maintain system stability.
-
+### Main Flow Diagram
 ```mermaid
-graph TD
-    A[Start Polling] --> B{Device Active?}
-    B -->|No| C[Search EID]
-    C -->|Found| D[Set Device Active & Update]
-    C -->|Not Found| E[Sleep & Retry]
-    D --> F[Get EID]
-    B -->|Yes| F
-    F --> G[Refresh Command Matrix]
-    G --> H[Set Polling State: Priority]
-    H --> I[Update Priority Sensors]
-    I --> J[Set Polling State: Non-Priority]
-    J --> K[Initialize Polling Type: GPM]
+flowchart TD
+    %% Start Section
+    Start[StartPolling Event] --> StartDeviceTasks[Start Device Task for new NsmDevice if not running]
+    StartDeviceTasks --> DeviceLoop[Device Loop]
     
-    subgraph Priority Sensors
-        I --> I1[For each priority sensor]
-        I1 --> I2[Update sensor]
-        I2 --> I3[Next sensor]
-    end
+    %% Device Task Flow
+    DeviceLoop --> CheckPollingRunning{Polling Running?}
+    CheckPollingRunning -->|No| End[End Task]
+    CheckPollingRunning -->|Yes| GetTime[Get Current Time t0]
     
-    subgraph GPM & Round Robin Sensors
-        K --> L{Time Budget Available? & Sensors in Queues?}
-        L -->|No| M[End Polling Cycle]
-        L -->|Yes| N{Needs Update?}
-        
-        N -->|No| O[Switch GPM↔RR]
-        N -->|Yes| P[Update Sensor]
-        P --> Q[Mark Refreshed]
-        Q --> R{Is GPM or Non-Static RR?}
-        R -->|Yes| S[Requeue Sensor]
-        R -->|No| T[Switch GPM↔RR]
-        
-        O --> L
-        S --> T
-        T --> L
-    end
+    %% Device Activation Check
+    GetTime --> CheckDeviceActive{Device Active?}
+    CheckDeviceActive -->|No| TryActivate[Try Activate Device]
+    TryActivate --> CheckDeviceActive2{Device Active?}
+    CheckDeviceActive -->|Yes| CheckCommands{All Command Codes Retrieved?}
     
-    M --> W[Calculate Sleep Time]
-    W --> X{Sleep Needed?}
-    X -->|Yes| Y[Sleep]
-    X -->|No| B
-    Y --> B
+    %% Command Matrix Check
+    CheckCommands -->|No| RefreshMatrix[Refresh Command Matrix]
+    CheckCommands -->|Yes| CheckDeviceActive2
+    RefreshMatrix --> CheckDeviceActive2
+    
+    CheckDeviceActive2 -->|No| Sleep[Sleep for remaining time]
+    CheckDeviceActive2 -->|Yes| PriorityPolling[Poll Priority Sensors]
+
+    %% Priority and Non-Priority Polling
+    PriorityPolling --> NonPriorityPolling[Poll Non-Priority Sensors]
+    NonPriorityPolling --> Sleep
+    Sleep --> DeviceLoop
 ```
 
+#### Device Activation Flow
+```mermaid
+flowchart TD
+    %% Try Activate Device
+    Start[Try Activate Device] --> SearchEID[Search EID using DeviceManager]
+    SearchEID --> EIDFound{EID Found?}
+    
+    EIDFound -->|Yes| SetOnline[Set Device Online]
+    SetOnline --> UpdateDevice[Update NsmDevice in DeviceManager]
+    UpdateDevice --> Sleep20ms[Sleep 20ms]
+    Sleep20ms --> Return[Return Success]
+    
+    EIDFound -->|No| SleepInactive[Sleep for Inactive Time]
+    SleepInactive --> Return
+    
+    Return --> End[End Activation]
+```
+
+#### Priority Sensors Polling
+```mermaid
+flowchart TD
+    %% Priority Sensors Polling
+    Start[Poll Priority Sensors] --> InitQueue[Initialize LimitedSensorQueue with prioritySensors]
+    InitQueue --> CheckSensors{Has Sensors to Update?}
+    
+    CheckSensors -->|Yes| UpdateSensor[Update Current Sensor]
+    UpdateSensor --> NextSensor[Move to Next Sensor]
+    NextSensor --> CheckSensors
+    
+    CheckSensors -->|No| End[End Priority Polling]
+```
+
+#### Non-Priority Sensors Polling
+```mermaid
+flowchart TD
+    %% Non-Priority Sensors Polling
+    Start[Poll Non-Priority Sensors] --> InitQueues[Initialize Queue Dictionary with all sensor types: GPM, LongRunning, Static, RoundRobin]
+    InitQueues --> GetTime[Get Current Time t1]
+    GetTime --> CalculateRemainingTime[Calculate Remaining Time with t1 - t0]
+    CalculateRemainingTime --> CheckTime{Remaining Time < 150ms - allowedBuffer?}
+    
+    CheckTime -->|No| End[End Non-Priority Polling]
+    CheckTime -->|Yes| CheckSensors{Has Sensors to Update in any Queue?}
+    
+    CheckSensors -->|No| MarkReady[Mark Device Ready]
+    MarkReady --> End
+    
+    CheckSensors -->|Yes| NextState[Next Polling State GPM➜LongRunning➜Static➜RoundRobin]
+    NextState --> GetQueue[Get Sensors Queue by Polling State]
+    GetQueue --> CheckQueue{Queue has sensors?}
+    
+    CheckQueue -->|No| NextIteration[Move to Next Iteration]
+    CheckQueue -->|Yes| GetSensor[Get Current Sensor]
+    GetSensor --> CheckNeedsUpdate{Sensor needs update?}
+    
+    CheckNeedsUpdate -->|No| NextIteration
+    CheckNeedsUpdate -->|Yes| CheckLongRunning{Is LongRunning Type?}
+    
+    CheckLongRunning -->|Yes| StartLongRunningTask[Start LongRunning Task if not running]
+    StartLongRunningTask --> NextIteration
+    
+    CheckLongRunning -->|No| UpdateSensor[Update Sensor]
+    UpdateSensor --> MarkRefreshed[Mark Sensor as Refreshed and set last updated time]
+    MarkRefreshed --> CheckStatic{Is Static Type?}
+    
+    CheckStatic -->|Yes| RemoveFromQueue[Remove from Static Queue]
+    CheckStatic -->|No| NextIteration
+    RemoveFromQueue --> NextIteration
+    
+    NextIteration --> GetTime
+```
+
+#### Polling State Machine Flow
+```mermaid
+flowchart TD
+    Start[Start Polling State Machine] --> GPM[GPM Sensors State]
+    GPM -->  GPMProcess[Process 1 GPM Sensor]
+    GPMProcess --> LongRunning[LongRunning Sensors State]
+    LongRunning --> LongRunningProcess[Process 1 LongRunning Sensor]
+    LongRunningProcess --> Static[Static Sensors State]
+    Static --> StaticProcess[Process 1 Static Sensor]
+    StaticProcess --> RoundRobin[RoundRobin Sensors State]
+    RoundRobin --> RoundRobinProcess[Process 1 RoundRobin Sensor]
+    RoundRobinProcess --> GPM
+```
+
+### Sensor Polling Sequence Diagram
+
+The following diagram illustrates the sensor polling flow for 2 devices, each with 2 priority sensors and 1 sensor in each non-priority queue:
+
+```mermaid
+sequenceDiagram
+    participant SM as SensorManager
+    participant DT1 as DeviceTask1
+    participant DT2 as DeviceTask2
+    participant GPU1 as GPU Device 1
+    participant GPU2 as GPU Device 2
+
+    Note over SM: Start polling cycle
+    SM->>DT1: Start deviceTask(Device1)
+    SM->>DT2: Start deviceTask(Device2)
+    
+    Note over DT1,DT2: Concurrent device activation
+    DT1->>DT1: Check device activation
+    DT2->>DT2: Check device activation
+    DT1-->>SM: Device 1 Active
+    DT2-->>SM: Device 2 Active
+    
+    Note over DT1,DT2: Concurrent command matrix refresh
+    DT1->>DT1: Check allCommandCodesAreRetrieved()
+    DT2->>DT2: Check allCommandCodesAreRetrieved()
+    DT1->>GPU1: refreshCommandMatrix()
+    DT2->>GPU2: refreshCommandMatrix()
+    GPU1-->>DT1: Command Matrix Refreshed
+    GPU2-->>DT2: Command Matrix Refreshed
+    
+    Note over DT1,DT2: Concurrent priority sensor polling
+    DT1->>GPU1: sensor->update() (Priority Sensor 1)
+    DT2->>GPU2: sensor->update() (Priority Sensor 1)
+    GPU1-->>DT1: Priority Sensor 1 Updated
+    GPU2-->>DT2: Priority Sensor 1 Updated
+    
+    DT1->>GPU1: sensor->update() (Priority Sensor 2)
+    DT2->>GPU2: sensor->update() (Priority Sensor 2)
+    GPU1-->>DT1: Priority Sensor 2 Updated
+    GPU2-->>DT2: Priority Sensor 2 Updated
+    
+    Note over DT1,DT2: Concurrent non-priority polling
+    Note over DT1: GPM State
+    DT1->>GPU1: sensor->update() (GPM Sensor)
+    Note over DT2: GPM State
+    DT2->>GPU2: sensor->update() (GPM Sensor)
+    GPU1-->>DT1: GPM Sensor Updated
+    GPU2-->>DT2: GPM Sensor Updated
+    
+    Note over DT1: LongRunning State
+    DT1->>GPU1: sensor->update() (LongRunning Sensor)
+    Note over DT2: LongRunning State
+    DT2->>GPU2: sensor->update() (LongRunning Sensor)
+    Note over DT1,DT2: LongRunning sensors processing in background
+    
+    Note over DT1: Static State
+    DT1->>GPU1: sensor->update() (Static Sensor)
+    Note over DT2: Static State
+    DT2->>GPU2: sensor->update() (Static Sensor)
+    GPU1-->>DT1: Static Sensor Updated, Remove from queue
+    GPU2-->>DT2: Static Sensor Updated, Remove from queue
+    
+    Note over DT1: RoundRobin State
+    DT1->>GPU1: sensor->update() (RoundRobin Sensor)
+    Note over DT2: RoundRobin State
+    DT2->>GPU2: sensor->update() (RoundRobin Sensor)
+    GPU1-->>DT1: RoundRobin Sensor Updated
+    GPU2-->>DT2: RoundRobin Sensor Updated
+    
+    Note over DT1,DT2: LongRunning responses processed asynchronously
+    GPU1-->>DT1: LongRunning Sensor Updated (delayed response)
+    GPU2-->>DT2: LongRunning Sensor Updated (delayed response)
+    
+    Note over DT1,DT2: Concurrent sleep
+    DT1->>DT1: Sleep(pollingTimeInUsec)
+    DT2->>DT2: Sleep(pollingTimeInUsec)
+    
+    Note over SM: Next polling cycle begins
+    SM->>DT1: Continue deviceTask(Device1)
+    SM->>DT2: Continue deviceTask(Device2)
+```
+
+### Sensor Queue Types
+
+The polling system manages sensors in different queues based on their priority and characteristics:
+
+- **Priority Sensors**: Polled every 150ms with highest priority
+- **GPM Sensors**: GPU Performance Monitoring sensors polled every 1000ms
+- **Long Running Sensors**: Sensors that require extended processing time
+- **Static Sensors**: One-time polled sensors removed after a successful update
+- **Round Robin Sensors**: Non-priority sensors polled in round-robin fashion
+
+### Polling Flow Summary
+
+1. **Device Activation**: Each device task first checks if the device is active.
+2. **Priority Polling**: All priority sensors are updated first for each device.
+3. **Non-Priority Polling**: Handled in state machine order:
+   - GPM (1s) → Long Running (15s) → Static (once) → Round Robin (30s)
+4. **Time Management**: Ensures polling finishes within time budget.
+5. **Sleep**: Device waits until next polling cycle.
+
+
+---
 ## Design
 
 ### **Sensors Insertion to Avoid Duplication**  
