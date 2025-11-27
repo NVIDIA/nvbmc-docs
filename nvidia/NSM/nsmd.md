@@ -1343,6 +1343,120 @@ To enable nsmd for a Platform, please follow steps given below.
 2. Create Entity Manager configuration file for the device that supports NSM, and configure Entity Manager to use this file for the Platform. Refer Entity Manager documentation for information on involved steps. An example file in given in earlier sections.
 3. Provide Platform specific settings like request timeouts, number of retries etc, by using Meson Options (nsmd uses Meson build system). Use EXTRA_OEMESON variable from meson bbclass to provide non-default values for these settings. Refer meson_options.txt file at nsmd repo for list of all available configuration options.
 
+## Extending Infrastructure for Device Role
+
+The Device Role parameter has been introduced as an optional extension to the NSMd infrastructure to uniquely identify NSM devices. This addition does not impact existing use cases, as the device role parameter is optional and maintains backward compatibility.
+
+### Rationale for Device Role
+
+Device type and device instance alone are not sufficient to uniquely identify an NSM device due to overlapping instance numbers across different device categories. The device role parameter was introduced to resolve this ambiguity.
+
+#### Key Design Constraints
+
+**Device Type Limitations:** All CX-series devices (CX7, CX8, CX9, etc.) are categorized under device type 2 (PCIe Bridge). It is not feasible to introduce separate device types for each CX variant, as they share the same functional category.
+
+**Instance Number Overlaps:** Device types 2 (PCIe Bridge) and 5 (MCTP Bridge) have overlapping instance numbers across different physical devices. These instance numbers drive the Redfish naming conventions for resources, making unique identification critical.
+
+### Device Role Mapping
+
+The following table illustrates how device role provides unique identification for devices with overlapping device types and instance numbers:
+
+| Device        | Device Type       | Device instance | Device role               |
+|---------------|-------------------|-----------------|---------------------------|
+| GPU           | 0 (GPU)           | --              | Not required (0-RESERVED) |
+| NvSwitch (QM3)| 1 (Fabric switch) | --              | Not required (0-RESERVED) |
+| CX7           | 2 (PCIe Bridge)   | --              | 1 for CX7                 |
+| CX8           | 2 (PCIe Bridge)   | --              | 2 for CX8                 |
+| CX9           | 3 (PCIe Bridge)   | --              | 3 for CX9                 |
+| SXM MCU       | 5 (MCTP Bridge)   | --              | 1 for SXM MCU             |
+| CX MCU        | 5 (MCTP Bridge)   | --              | 2 for CX MCU              |
+| HPM MCU       | 5 (MCTP Bridge)   | --              | 3 for HPM MCU             |
+
+### Backward Compatibility
+
+The device role parameter is optional in NSMRawCommand requests. When not specified in a Redfish query, the device role defaults to 0 (RESERVED), ensuring that existing use cases and integrations remain unaffected by this extension.
+
+### UUID Configuration in Entity Manager
+
+When defining NSM devices in Entity Manager configuration files, UUIDs can be specified using a static format that encodes device type, role, instance number, and mapping information. This is particularly useful for defining static devices configs.
+
+#### Static UUID Format
+
+The static UUID format follows this structure:
+
+```text
+STATIC:<deviceType&Role>:<instanceNumber>:<MappingTag>:<MappingValue>
+```
+
+**Format Components:**
+
+- `STATIC`: Keyword indicating this is a statically generated UUID
+- `<deviceType&Role>`: A 16-bit combined value encoding both device type and role
+- `<instanceNumber>`: The device instance number
+- `<MappingTag>`: Tag identifying the mapping mechanism (e.g., "EID", "UUID", "SLOT")
+- `<MappingValue>`: The value associated with the mapping tag
+
+#### Device Type and Role Encoding
+
+The `<deviceType&Role>` field is a 16-bit value that combines the device type and device role into a single parameter:
+
+```c
+void getDeviceTypeAndRole(uint16_t combined, uint8_t* deviceType,
+                          uint8_t* deviceRole)
+{
+    *deviceType = (uint8_t)(combined & 0xFF); // Type is in low byte
+    *deviceRole = (uint8_t)(combined >> 8);   // Role is in high byte
+}
+```
+
+**Encoding Rules:**
+
+- **Low byte (bits 0-7)**: Contains the device type value
+- **High byte (bits 8-15)**: Contains the device role value
+
+**Examples of Combined Values:**
+
+| Device Type | Device Role | Combined Value (hex) | Combined Value (decimal) |
+|------------|-------------|---------------------|-------------------------|
+| 2 (PCIe Bridge) | 1 (CX7) | 0x0102 | 258 |
+| 2 (PCIe Bridge) | 2 (CX8) | 0x0202 | 514 |
+| 5 (MCTP Bridge) | 1 (SXM MCU) | 0x0105 | 261 |
+| 5 (MCTP Bridge) | 2 (CX MCU) | 0x0205 | 517 |
+
+#### Example UUID Configuration
+
+In Entity Manager JSON configuration:
+
+```json
+{
+    "Name": "CX8_Device_0",
+    "UUID": "STATIC:514:0:EID:30"
+}
+```
+
+This configuration specifies:
+- Device Type: 2 (0x02) - PCIe Bridge
+- Device Role: 2 (0x02) - CX8
+- Combined Value: 514 (0x0202)
+- Instance Number: 0
+- Mapping: EID 30
+
+Another example for SXM MCU:
+
+```json
+{
+    "Name": "SXM_MCU_1",
+    "UUID": "STATIC:261:1:EID:25"
+}
+```
+
+This configuration specifies:
+- Device Type: 5 (0x05) - MCTP Bridge
+- Device Role: 1 (0x01) - SXM MCU
+- Combined Value: 261 (0x0105)
+- Instance Number: 1
+- Mapping: EID 25
+
 ## Reference
 
 1. <https://www.dmtf.org/sites/default/files/standards/documents/DSP0257_1.0.1_0.pdf>
