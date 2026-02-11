@@ -1,0 +1,5 @@
+reviews:
+  commit_status: false
+  tone: technical
+  style: concise
+  avoid_creative_writing: true
