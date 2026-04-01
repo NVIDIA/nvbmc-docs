@@ -1262,6 +1262,144 @@ e.g. Look at the probe, it gets true for all retimer devices.
    }
 ```
 
+#### Network Adapter Device Mode Settings
+
+The `NSM_NetworkAdapter` EM config type supports device mode settings for BF4 and CX9 platforms. Device modes
+are defined as part of NSM Type-5 Get/Set Device Mode Settings v2 (0x82,0x83).
+A single array property declares which device modes each platform supports and which sub-settings are patchable (configurable via Redfish).
+
+##### Properties
+
+| Property | Type | D-Bus Signature | Description |
+|---|---|---|---|
+| `DeviceModesSupported` | `array[int64]` | `ax` | One entry per device mode index. Value `-1` = mode not supported on this platform. Value `>= 0` = mode supported, and the value is the patchability bitmap (bit M set = sub-setting M is patchable; bit clear = read-only). |
+
+
+##### Device Mode Index Reference (NSM Type 5)
+
+| Array Index | Mode Name |
+|---|---|
+| 0 | L1 Power Mode |
+| 1 | NVLink Port Clock |
+| 2 | NVLink Asymmetrical Flow Timers |
+| 3 | DPU Operation Mode |
+| 4 | PCIe Device Mode |
+
+##### Patchability Bitmap Bits (per mode)
+
+| Mode | Bit | Sub-setting |
+|---|---|---|
+| DPU Operation Mode (index 3) | 0 | DPU/NIC Operation Mode |
+| PCIe Device Mode (index 4) | 0 | Multi Sockets |
+| PCIe Device Mode (index 4) | 1 | Controlled E/W Traffic |
+| PCIe Device Mode (index 4) | 2 | PCIe Bifurcation |
+
+##### Platform Config Values
+
+| Platform | `DeviceModesSupported` | Explanation |
+|---|---|---|
+| BF4 (Strata) | `[-1, -1, -1, 1, 5]` | Indices 0–2: `-1` (not supported). Index 3: `1` (DPU mode supported, patchability=0b01 → DPU/NIC configurable). Index 4: `5` (PCIe mode supported, patchability=0b101 → Multi Socket + Bifurcation configurable, E/W not configurable). |
+| CX9 (VR & HGXR) | `[-1, -1, -1, -1, 2]` | Indices 0–3: `-1` (not supported, including DPU mode). Index 4: `2` (PCIe mode supported, patchability=0b010 → only E/W Traffic configurable). |
+
+##### Example (BF4)
+
+```json
+{
+    "Name": "BlueField_NIC_0",
+    "Type": "NSM_NetworkAdapter",
+    "InventoryObjPath": "/xyz/openbmc_project/inventory/system/chassis/BlueField_0/NetworkAdapters/",
+    "UUID": "$UUID",
+    "DeviceModesSupported": [-1, -1, -1, 1, 5],
+    "Associations": [
+      {
+        "Forward": "parent_chassis",
+        "Backward": "network_adapters",
+        "AbsolutePath": "/xyz/openbmc_project/inventory/system/chassis/BlueField_0"
+      }
+    ]
+}
+```
+
+##### Porting Guide
+
+When enabling a new platform, populate `DeviceModesSupported` as an array of `int64` values with one entry per device mode index (see the index table above). For each index:
+- Set `-1` if the mode is not supported on the platform.
+- Set `>= 0` with the patchability bitmap if the mode is supported (bit M set = sub-setting M is configurable via Redfish PATCH).
+
+nsmd reads this array as `std::vector<int64_t>` (D-Bus signature `ax`) during device discovery. For each index with a value `>= 0`, nsmd creates the corresponding DeviceMode D-Bus object and sets `IsModeConfigurable` per sub-setting based on the patchability bits.
+
+#### Dynamic Multi PCIe Port Discovery
+
+The `NSM_PCIeRetimer_MultiPCIeLink` EM config type supports dynamic PCIe port discovery. A single EM config entry per device is sufficient — nsmd discovers the actual port topology at runtime by querying the device.
+
+##### Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `Name` | `string` | Entry name (e.g. `"PCIePorts"`) |
+| `Type` | `string` | Must be `"NSM_PCIeRetimer_MultiPCIeLink"` |
+| `InventoryObjPath` | `string` | Base D-Bus object path for port objects (e.g. `.../Switches/<Switch>/Ports/`) |
+| `Associations` | `array` | Link to parent switch object (`parent_device` / `all_states`) |
+| `UUID` | `string` | Device UUID for EID lookup |
+| `UpstreamPortName` | `string` | Naming prefix for upstream port D-Bus objects (e.g. `"UP"`) |
+| `DownstreamPortName` | `string` | Naming prefix for downstream port D-Bus objects (e.g. `"DOWN"`) |
+
+##### Example
+
+```json
+{
+    "Name": "PCIePorts",
+    "Type": "NSM_PCIeRetimer_MultiPCIeLink",
+    "InventoryObjPath": ".../Ports/",
+    "Associations": [
+      {
+        "Forward": "parent_device",
+        "Backward": "all_states",
+        "AbsolutePath": ".../Switches/<Switch>"
+      }
+    ],
+    "UUID": "$UUID",
+    "UpstreamPortName": "UP",
+    "DownstreamPortName": "DOWN"
+}
+```
+
+##### Runtime Discovery via ListPCIePorts
+
+At startup (and on device offline→online reconnect), nsmd sends **`ListPCIePorts`** (NSM Type 2, command `0x07`) to the device. The response tells nsmd exactly how many upstream and downstream ports exist:
+
+**Response structure** (`nsm_list_available_pcie_ports_info`):
+
+| Field | Type | Description |
+|---|---|---|
+| `ports_count` | `uint16` | Number of upstream ports on the device |
+| `ports[N]` | array of `nsm_pcie_upstream_port_info` | One entry per upstream port (index 0 to `ports_count - 1`) |
+
+Each `nsm_pcie_upstream_port_info` entry contains:
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | `uint8` | `0` = external, `1` = internal |
+| `downstream_ports_count` | `uint8` | Number of downstream ports attached to this upstream port |
+
+**PCIe Ports NSM sensors creation:**
+
+1. `ports_count` determines how many upstream port D-Bus objects to create, named `{UpstreamPortName}_{index}` (e.g. `UP_0`, `UP_1`, …).
+2. For each upstream port `i`, `ports[i].downstream_ports_count` determines how many downstream port D-Bus objects to create, named `{DownstreamPortName}_{index}` (e.g. `DOWN_0`, `DOWN_1`, …), where the downstream index is a running counter across all upstream ports.
+3. Each port object gets the full set of telemetry sensor groups (PCIeECCGroup1–10, LaneManager, PortConfigurationInfo for upstream ports).
+
+**Verifying on a new platform** — run the raw NSM command via `nsmtool dbus` and inspect the response to confirm expected port counts before enabling the EM config:
+
+```bash
+nsmtool dbus raw -t 2 -c 0x07 -m <EID>
+```
+
+The response bytes decode as: `[ports_count_lo, ports_count_hi, {type, downstream_count}, {type, downstream_count}, ...]`.
+
+##### Porting Guide
+
+Add a single `NSM_PCIeRetimer_MultiPCIeLink` entry per device for PCIe ports. Set `UpstreamPortName` and `DownstreamPortName` to the desired D-Bus object naming prefixes. No port counts or port types need to be specified — these are discovered from the device via `ListPCIePorts` (0x07) at runtime.
+
 #### NSM Event Configs
 
 - json blocks are of 2 types
