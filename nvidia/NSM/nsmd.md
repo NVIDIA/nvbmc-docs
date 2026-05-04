@@ -1509,6 +1509,8 @@ The following table illustrates how device role provides unique identification f
 | SXM MCU       | 5 (MCTP Bridge)   | --              | 1 for SXM MCU             |
 | CX MCU        | 5 (MCTP Bridge)   | --              | 2 for CX MCU              |
 | HPM MCU       | 5 (MCTP Bridge)   | --              | 3 for HPM MCU             |
+| CPU           | 5 (MCTP Bridge)   | --              | 4 for CPU                 |
+| QM MCU        | 5 (MCTP Bridge)   | --              | 5 for QM MCU              |
 
 ### Backward Compatibility
 
