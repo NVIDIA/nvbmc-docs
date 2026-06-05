@@ -99,8 +99,8 @@ To begin working with the SDK:
   mkdir -p ~/sdk
   cd ~/sdk
 
-  wget https://jenkins.openbmc.org/job/latest-master-sdk/label=docker-builder,target=romulus/lastSuccessfulBuild/artifact/deploy/sdk/oecore-x86_64-arm1176jzs-toolchain-nodistro.0.sh
-  chmod u+x oecore-x86_64-arm1176jzs-toolchain-nodistro.0.sh
+    wget https://jenkins.openbmc.org/job/latest-master-sdk/label=docker-builder,target=romulus/lastSuccessfulBuild/artifact/deploy/sdk/oecore-obmc-phosphor-image-x86_64-arm1176jzs-romulus-toolchain-nodistro.0.sh
+    chmod u+x oecore-obmc-phosphor-image-x86_64-arm1176jzs-romulus-toolchain-nodistro.0.sh
   ```
 
 2. Install the SDK
@@ -117,7 +117,7 @@ To begin working with the SDK:
   previous step.
 
   ```
-  ./oecore-x86_64-arm1176jzs-toolchain-nodistro.0.sh
+  ./oecore-obmc-phosphor-image-x86_64-arm1176jzs-romulus-toolchain-nodistro.0.sh
   ```
 
   The installation script will indicate progress and give completion messages
